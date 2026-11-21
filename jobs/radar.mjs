@@ -303,8 +303,28 @@ if (INFORME) {
   const texto = informe(resultado);
   const carpeta = join(AQUI, 'salida');
   mkdirSync(carpeta, { recursive: true });
-  const ruta = join(carpeta, `radar-${new Date().toISOString().slice(0, 10)}.md`);
+  const hoy = new Date().toISOString().slice(0, 10);
+  const ruta = join(carpeta, `radar-${hoy}.md`);
   writeFileSync(ruta, texto, 'utf8');
+
+  // El mismo material en JSON, para que la segunda etapa trabaje con
+  // datos y no parseando un markdown.
+  writeFileSync(join(carpeta, `candidatas-${hoy}.json`), JSON.stringify({
+    fecha: hoy,
+    recolectadas: senales.length,
+    descartadas: resultado.descartadas,
+    candidatas: resultado.candidatas.map(s => ({
+      titulo: s.titulo,
+      url: s.url,
+      resumen: s.resumen,
+      fuente: s.fuente,
+      primacy: s.primacy,
+      fecha: s.fecha,
+      puntos: s.puntos,
+      nodo: s.nodo,
+      motivos: s.motivos
+    }))
+  }, null, 2), 'utf8');
 
   console.log(`\nFiltro: ${resultado.descartadas} descartadas, ${resultado.candidatas.length} candidatas\n`);
   for (const [i, s] of resultado.candidatas.entries()) {
