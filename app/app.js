@@ -163,7 +163,18 @@ function vistaEntrar() {
     const { error: e } = nuevo
       ? await db.auth.signUp(creds)
       : await db.auth.signInWithPassword(creds);
-    if (e) return msj.replaceChildren(error(e.message));
+
+    if (e) {
+      // El alta está cerrada a propósito: esto es un círculo chico, no una
+      // app abierta. Que no vea un error en inglés el que lo intente.
+      const texto = /signup|sign-up|not allowed|disabled/i.test(e.message)
+        ? 'El alta de cuentas está cerrada. Pedile a Diego que te habilite una y volvé a entrar acá.'
+        : /invalid login|credentials/i.test(e.message)
+          ? 'El mail o la contraseña no coinciden.'
+          : e.message;
+      return msj.replaceChildren(error(texto));
+    }
+
     location.reload();
   };
 

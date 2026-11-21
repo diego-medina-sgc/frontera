@@ -104,12 +104,19 @@ conectado a Git todavía). Para publicar una versión nueva:
 Si el empaquetado falla diciendo que un archivo está en uso, es el servidor
 local de pruebas: cerralo primero.
 
-### Pendiente de seguridad
+### Alta de usuarios: cerrada
 
-El alta de usuarios está **abierta**: cualquiera con el link puede crearse
-una cuenta. Para un círculo chico conviene, una vez que estén todos
-registrados, apagar *Allow new users to sign up* en
-https://supabase.com/dashboard/project/lboyidbtjxjkhwupysks/auth/providers
+*Allow new users to sign up* está **apagado**. Nadie puede crearse una cuenta
+aunque tenga el link, y quien lo intente ve un mensaje claro en español.
+
+Para sumar a alguien hay dos caminos:
+
+- **Volver a abrirla un rato** en
+  https://supabase.com/dashboard/project/lboyidbtjxjkhwupysks/auth/providers,
+  que se registre, y apagarla de nuevo.
+- **Crear la cuenta desde el panel**, en
+  https://supabase.com/dashboard/project/lboyidbtjxjkhwupysks/auth/users
+  → *Add user*, y pasarle el mail y la contraseña a la persona.
 
 ### 4. Publicarla (y recién ahí probarla)
 
