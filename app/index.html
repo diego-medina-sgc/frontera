@@ -20,6 +20,11 @@
 <body>
   <div id="progreso" hidden></div>
 
+  <div id="version-nueva" hidden>
+    <span>Hay una versión nueva</span>
+    <button id="actualizar" type="button">Actualizar</button>
+  </div>
+
   <header id="barra" hidden>
     <span class="marca">Frontera</span>
     <nav id="nav">
@@ -38,8 +43,22 @@
 
   <script type="module" src="app.js"></script>
   <script>
+    // Aviso de versión nueva. Sin esto, alguien puede quedarse con una
+    // versión vieja sin enterarse, que es exactamente lo que pasó.
     if ('serviceWorker' in navigator) {
-      addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+      addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+
+        navigator.serviceWorker.addEventListener('message', (e) => {
+          if (e.data?.tipo !== 'version-nueva') return;
+          const barra = document.getElementById('version-nueva');
+          if (barra) barra.hidden = false;
+        });
+      });
+
+      document.addEventListener('click', (e) => {
+        if (e.target?.id === 'actualizar') location.reload();
+      });
     }
   </script>
 </body>

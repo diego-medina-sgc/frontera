@@ -74,9 +74,13 @@ proyectos"*. Que vea de dónde salió.
 
 ### 5. Publicar
 
-Por ahora a mano, con SQL, como `db/011_primer_reto.sql`. Cuando haya
-credenciales en `jobs/.env`, se puede insertar por la API igual que el
-radar.
+```
+node jobs/publicar.mjs jobs/salida/reto-FECHA.json
+```
+
+Valida antes de escribir: nodo válido, cuerpo con cuerpo, el `porque`
+presente, y entre 10 y 45 minutos. Y **frena si ya hay un reto abierto**
+para esa persona, que es la regla que de otro modo se olvida.
 
 ## Reglas que no se rompen
 

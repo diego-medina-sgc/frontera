@@ -19,24 +19,8 @@ import { createHash } from 'node:crypto';
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const HOY = new Date().toISOString().slice(0, 10);
 
-const entrada = process.argv[2] || join(AQUI, 'salida', `lecciones-${HOY}.json`);
-
-if (!existsSync(entrada)) {
-  console.log(`No encontré ${entrada}`);
-  console.log('La segunda etapa tiene que dejar ahí las lecciones escritas.');
-  process.exit(1);
-}
-
-const { lecciones } = JSON.parse(readFileSync(entrada, 'utf8'));
-
-if (!lecciones?.length) {
-  console.log('El archivo no trae lecciones. Hay días en que el mundo no produce nada: está bien.');
-  process.exit(0);
-}
-
-// ------------------------------------------------------------
-// Validación: más vale frenar acá que publicar algo roto
-// ------------------------------------------------------------
+// Arriba de todo porque lo usan tanto la publicación de lecciones como
+// la de retos, y la de retos corre antes.
 const NODOS_VALIDOS = new Set([
   'fundamentos', 'instrucciones', 'como-pedir', 'limites', 'privacidad',
   'archivos', 'contexto', 'modalidades', 'automatizacion', 'agentes',
@@ -44,6 +28,106 @@ const NODOS_VALIDOS = new Set([
   'contexto-largo'
 ]);
 
+const entrada = process.argv[2] || join(AQUI, 'salida', `lecciones-${HOY}.json`);
+
+if (!existsSync(entrada)) {
+  console.log(`No encontré ${entrada}`);
+  console.log('La segunda etapa tiene que dejar ahí las lecciones escritas.');
+  console.log(`\nPara un reto: node jobs/publicar.mjs jobs/salida/reto-${HOY}.json`);
+  process.exit(1);
+}
+
+const crudo = JSON.parse(readFileSync(entrada, 'utf8'));
+
+// El archivo puede traer lecciones de radar o un reto. Un reto viene
+// suelto, sin envoltorio, porque lo escribe el skill de retos.
+if (crudo.nodo && crudo.cuerpo && !crudo.lecciones) {
+  await publicarReto(crudo);
+  process.exit(0);
+}
+
+const { lecciones } = crudo;
+
+if (!lecciones?.length) {
+  console.log('El archivo no trae lecciones. Hay días en que el mundo no produce nada: está bien.');
+  process.exit(0);
+}
+
+// ------------------------------------------------------------
+// Retos
+// ------------------------------------------------------------
+// Un reto es de una sola persona, así que necesita PROFILE_ID. Y hay
+// una regla que se respeta acá y no en la cabeza de nadie: un solo
+// reto abierto por vez. Dos compiten entre sí y no se hace ninguno.
+async function publicarReto(reto) {
+  const cred = credenciales();
+  if (!cred || !cred.PROFILE_ID) {
+    console.log('Para publicar un reto hacen falta SUPABASE_URL, SUPABASE_SECRET_KEY y PROFILE_ID en jobs/.env.');
+    return;
+  }
+
+  const problemas = [];
+  if (!NODOS_VALIDOS.has(reto.nodo)) problemas.push(`nodo desconocido (${reto.nodo})`);
+  if (!reto.titulo?.trim()) problemas.push('falta el título');
+  if ((reto.cuerpo || '').length < 600) problemas.push('el cuerpo es sospechosamente corto');
+  if (!reto.porque?.trim()) problemas.push('falta el porqué, que es lo que se le muestra a la persona');
+  if (reto.minutos && (reto.minutos < 10 || reto.minutos > 45)) problemas.push('un reto va entre 10 y 45 minutos');
+
+  if (problemas.length) {
+    console.log('No publiqué nada. Problemas:\n');
+    for (const p of problemas) console.log(`  · ${p}`);
+    return;
+  }
+
+  const cab = {
+    'apikey': cred.SUPABASE_SECRET_KEY,
+    'Authorization': `Bearer ${cred.SUPABASE_SECRET_KEY}`,
+    'Content-Type': 'application/json'
+  };
+
+  const api = async (ruta, opciones = {}) => {
+    const r = await fetch(`${cred.SUPABASE_URL}/rest/v1/${ruta}`, { ...opciones, headers: { ...cab, ...opciones.headers } });
+    if (!r.ok) throw new Error(`${ruta}: HTTP ${r.status} ${await r.text()}`);
+    return r.status === 204 ? null : r.json();
+  };
+
+  try {
+    const abiertos = await api(
+      `challenges?profile_id=eq.${cred.PROFILE_ID}&status=in.(propuesto,haciendo)&select=id,title`
+    );
+
+    if (abiertos.length) {
+      console.log(`Ya hay un reto abierto: "${abiertos[0].title}".`);
+      console.log('Un solo reto por vez. Cerralo o descartalo en la app antes de generar otro.');
+      return;
+    }
+
+    const topics = await api(`topics?slug=eq.${encodeURIComponent(reto.nodo)}&select=id`);
+    if (!topics.length) throw new Error(`el nodo ${reto.nodo} no existe`);
+
+    await api('challenges', {
+      method: 'POST',
+      headers: { 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        profile_id: cred.PROFILE_ID,
+        topic_id: topics[0].id,
+        title: reto.titulo,
+        body_md: reto.cuerpo,
+        porque: reto.porque,
+        minutes: reto.minutos || 20,
+        status: 'propuesto'
+      })
+    });
+
+    console.log(`Reto publicado: ${reto.titulo}`);
+  } catch (e) {
+    console.log(`No pude publicar el reto: ${e.message}`);
+  }
+}
+
+// ------------------------------------------------------------
+// Validación: más vale frenar acá que publicar algo roto
+// ------------------------------------------------------------
 const problemas = [];
 for (const [i, l] of lecciones.entries()) {
   const d = `lección ${i + 1}`;

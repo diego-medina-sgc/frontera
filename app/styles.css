@@ -155,6 +155,38 @@ nav button[aria-current="page"] {
   box-shadow: 0 1px 2px rgba(0,0,0,.04);
 }
 
+/* ---------- aviso de versión nueva ---------- */
+#version-nueva {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--negro);
+  color: var(--sobre-negro);
+  border-radius: 999px;
+  padding: 8px 8px 8px 18px;
+  font-size: 14px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.18);
+  max-width: calc(100vw - 32px);
+}
+
+#version-nueva[hidden] { display: none; }
+
+#version-nueva button {
+  background: var(--sobre-negro);
+  color: var(--negro);
+  border: none;
+  border-radius: 999px;
+  min-height: 34px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* ---------- barra de progreso de lectura ---------- */
 #progreso {
   position: fixed;
@@ -526,16 +558,77 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
 }
 
 /* ---------- mapa ---------- */
+
+/* El número grande como protagonista de la pantalla */
+.cifra { display: flex; align-items: center; gap: 18px; margin-bottom: 28px; }
+
+.cifra-numero {
+  font-size: clamp(64px, 17vw, 86px);
+  line-height: .86;
+  letter-spacing: -0.05em;
+  font-weight: 600;
+}
+
+.cifra-etiqueta { font-size: 16px; font-weight: 560; }
+
+.cifra-detalle {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--texto-3);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-top: 4px;
+}
+
+.destacado {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 14px 16px;
+  margin-bottom: 26px;
+  font-size: 15px;
+}
+
+.grupo-titulo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--texto-3);
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  margin: 26px 0 10px;
+}
+
+.grupo-cuenta { margin-left: auto; }
+
+.tabla { padding: 6px 20px; }
+
 .nodo {
   display: grid;
-  grid-template-columns: 1fr 120px auto;
+  grid-template-columns: 1fr 110px 32px auto;
   align-items: center;
   gap: 12px;
-  padding: 12px 0;
+  padding: 13px 0;
   border-bottom: 1px solid var(--borde);
 }
 
+.tabla .nodo:last-child { border-bottom: none; }
+
 .nodo-nombre { font-size: 15px; }
+
+.nodo-valor {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--texto-3);
+  text-align: right;
+}
+
 .nodo-lejos { opacity: .4; }
 
 .barra { height: 6px; border-radius: 999px; background: var(--borde); overflow: hidden; }
@@ -556,8 +649,10 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
 }
 
 @media (max-width: 480px) {
-  .nodo { grid-template-columns: 1fr 70px auto; gap: 8px; }
+  .nodo { grid-template-columns: 1fr 56px 28px auto; gap: 8px; }
   .nodo-nombre { font-size: 14px; }
+  .tabla { padding: 4px 16px; }
+  .cifra { gap: 14px; }
 }
 
 /* ---------- plegable ---------- */

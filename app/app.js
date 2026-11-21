@@ -1535,20 +1535,42 @@ async function vistaMapa() {
     .map(t => ({ t, brecha: (actividad[t.id] || 0) * 20 + (60 - valorDe(t)) }))
     .sort((a, b) => b.brecha - a.brecha)[0]?.t;
 
+  const alcanzables = (topics || []).filter(t => t.level_floor <= perfil.level);
+  const promedio = alcanzables.length
+    ? Math.round(alcanzables.reduce((a, t) => a + valorDe(t), 0) / alcanzables.length)
+    : 0;
+
   const nodos = [
-    el('h1', { text: 'El mapa' }),
-    el('p', { class: 'bajada', text: `Encendiste ${encendidos} de ${topics?.length ?? 0} nodos. La barra es lo que sabés; el punto, lo que se movió el campo este tiempo.` })
+    el('p', { class: 'paso', text: 'Tu posición' }),
+
+    // El número grande como protagonista, igual que en los paneles
+    // buenos: un dato que se lee de una y el resto alrededor.
+    el('div', { class: 'cifra' }, [
+      el('div', { class: 'cifra-numero', text: String(promedio) }),
+      el('div', { class: 'cifra-lado' }, [
+        el('div', { class: 'cifra-etiqueta', text: 'Dominio promedio' }),
+        el('div', { class: 'cifra-detalle', text: `${encendidos} de ${topics?.length ?? 0} nodos encendidos` })
+      ])
+    ])
   ];
 
   if (frontera) {
-    nodos.push(el('div', { class: 'aviso', text: `Tu frontera está en ${frontera.name_es}: es donde más se mueve el campo y menos te movés vos.` }));
+    nodos.push(el('div', { class: 'destacado' }, [
+      el('span', { class: 'punto', text: 'Tu frontera' }),
+      el('span', { text: `${frontera.name_es} — donde más se mueve el campo y menos te movés vos.` })
+    ]));
   }
 
   for (const kind of ['fundamento', 'frontera']) {
     const grupo = (topics || []).filter(t => t.kind === kind);
     if (!grupo.length) continue;
 
-    nodos.push(el('h2', { text: kind === 'fundamento' ? 'Fundamentos' : 'Frontera' }));
+    nodos.push(el('div', { class: 'grupo-titulo' }, [
+      el('span', { text: kind === 'fundamento' ? 'Fundamentos' : 'Frontera' }),
+      el('span', { class: 'grupo-cuenta', text: `${grupo.filter(t => valorDe(t) >= 50).length}/${grupo.length}` })
+    ]));
+
+    const caja = el('div', { class: 'tarjeta tabla' });
 
     for (const t of grupo) {
       const valor = valorDe(t);
@@ -1562,16 +1584,19 @@ async function vistaMapa() {
       barra.append(el('div', { class: 'barra-llena', style: `width:${valor}%` }));
       fila.append(barra);
 
+      fila.append(el('div', { class: 'nodo-valor', text: fuera ? '—' : String(valor) }));
+
       const marcas = el('div', { class: 'nodo-marcas' });
-      if (activo) marcas.append(el('span', { class: 'punto', title: `${activo} novedades`, text: '●'.repeat(Math.min(activo, 3)) }));
-      if (fuera) marcas.append(el('span', { class: 'tema', text: 'más adelante' }));
+      if (activo) marcas.append(el('span', { class: 'punto', title: `${activo} novedades`, text: `+${activo}` }));
       fila.append(marcas);
 
-      nodos.push(fila);
+      caja.append(fila);
     }
+
+    nodos.push(caja);
   }
 
-  nodos.push(el('p', { class: 'fuente', text: 'Un nodo apagado no significa que no sepas: significa que la app todavía no tiene evidencia de que te muevas ahí.' }));
+  nodos.push(el('p', { class: 'fuente', text: 'Un nodo apagado no significa que no sepas: significa que la app todavía no tiene evidencia de que te muevas ahí. La barra sale de lo que hacés; el número verde, de lo que el campo movió este tiempo.' }));
 
   pintar(...nodos);
 }

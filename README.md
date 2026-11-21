@@ -163,7 +163,27 @@ node jobs/radar.mjs --guardar
 Lo que ya está en la base no se duplica: lo decide el índice único sobre
 el hash de la URL.
 
-**Triage y redacción** (pendiente). Es la mitad que importa: decidir qué
+### La rutina diaria
+
+`diario.ps1` hace todo lo que no necesita criterio: sale a buscar,
+filtra, guarda las señales nuevas, deja el informe de candidatas y corre
+los controles. Los lunes además actualiza el perfil por evidencia.
+
+Probarla:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Users\Usuario\Desktop\Claude\Code\Frontera\diario.ps1"
+```
+
+Para que corra sola todos los días a las 7, una sola vez:
+
+```powershell
+schtasks /create /tn "Frontera diario" /tr "powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File \"C:\Users\Usuario\Desktop\Claude\Code\Frontera\diario.ps1\"" /sc daily /st 07:00
+```
+
+Queda registro en `jobs/salida/diario.log`.
+
+**Triage y redacción** (a mano, con criterio). Es la mitad que importa: decidir qué
 de todo eso es nuevo de verdad, qué le sirve a cada nivel, y escribir la
 lección. Corre con la suscripción de Claude desde esta máquina, no con una
 API paga. Sin esa mitad, el radar junta ruido: de 105 señales de un día
