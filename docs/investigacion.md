@@ -62,6 +62,12 @@ que lo que sí.
 lo que haría.
 
 - ¿Para qué usaste IA esta semana? Contame el último caso concreto.
+- **¿Qué es lo que más te cuesta hoy de tu trabajo, tenga que ver con
+  IA o no?** *(Va temprano y a propósito. En el ensayo con personas
+  simuladas, lo más valioso aparecía siempre al final, en la pregunta
+  de descarte, lo cual significaba que las preguntas del medio estaban
+  hechas para lo que yo quería saber y no para lo que a la persona le
+  importa.)*
 - ¿Cómo te enteraste de la última cosa nueva de IA que probaste?
 - Mostrame dónde la usás. *(Si es por videollamada, pedile que comparta
   pantalla. Lo que hace no coincide con lo que cuenta.)*
@@ -72,7 +78,15 @@ lo que haría.
   te había pasado? Contame esa vez.
 - ¿Qué hiciste al respecto? *(La respuesta "nada" es un dato enorme.)*
 - ¿Cuánto tiempo por semana le dedicás hoy a ponerte al día? ¿Dónde?
+  **¿Cuándo fue la última vez, concretamente?** *(La repregunta es
+  obligatoria: el primer número siempre es optimista y la persona suele
+  corregirse sola.)*
 - ¿Qué probaste para resolverlo y abandonaste? ¿Por qué lo abandonaste?
+  *(Si nunca intentó nada, cambiar por: ¿hubo algo que quisiste
+  resolver y no supiste por dónde empezar? La pregunta original se cae
+  con nivel 0 y 1.)*
+- **¿Cuánto tiempo real tenés por semana para esto, en minutos?**
+- **¿Qué es lo que te daría vergüenza no saber?**
 
 **Alternativas (5 min).** Esto es el método de Dunford aplicado.
 
