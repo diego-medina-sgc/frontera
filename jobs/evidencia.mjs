@@ -129,7 +129,11 @@ for (const ruta of lista) {
 // de que la persona se mueve ahí. Pesa más aparecer en varios proyectos
 // distintos que muchas veces en uno solo: eso distingue haber usado algo
 // de haberlo incorporado.
-const maxHits = Math.max(1, ...Object.values(nodos).map(n => n.hits));
+// Normalizado por tamaño del léxico: un nodo con 14 términos acumula
+// apariciones más rápido que uno con 7, y eso no dice nada sobre la
+// persona. Sin esto, el ranking mide mi vocabulario y no su dominio.
+const densidad = (slug, hits) => hits / NODOS[slug].terminos.length;
+const maxDensidad = Math.max(0.001, ...Object.entries(nodos).map(([s, n]) => densidad(s, n.hits)));
 
 const dominio = Object.entries(nodos)
   .map(([slug, n]) => ({
@@ -137,7 +141,7 @@ const dominio = Object.entries(nodos)
     hits: n.hits,
     proyectos: n.proyectos.size,
     valor: Math.min(100, Math.round(
-      (n.hits / maxHits) * 60 + Math.min(n.proyectos.size, 5) * 8
+      (densidad(slug, n.hits) / maxDensidad) * 60 + Math.min(n.proyectos.size, 5) * 8
     ))
   }))
   .filter(n => n.hits > 0)
@@ -162,8 +166,33 @@ if (nivel === 3 && prop('mide') > 0.18 && prop('delega') > 0.06
 // ------------------------------------------------------------
 // Salida: números y nada más
 // ------------------------------------------------------------
+// Los huecos: nodos de frontera donde hay poca evidencia para el nivel
+// que tiene la persona. De acá sale el TEMA de los retos.
+//
+// Un nodo sin ningún rastro no es un hueco: puede ser algo que no tiene
+// nada que ver con lo suyo. El hueco de verdad es el nodo que la persona
+// roza —aparece, pero poco y en pocos proyectos— teniendo nivel para
+// dominarlo. Eso es lo que está al alcance y no agarró.
+const FRONTERA = ['agentes', 'evals', 'automatizacion', 'producto', 'negocios',
+                  'modelos', 'contexto-largo', 'diseno'];
+
+const huecos = dominio
+  .filter(d => FRONTERA.includes(d.slug) && d.valor < 55 && d.proyectos >= 2)
+  .sort((a, b) => a.valor - b.valor)
+  .map(d => ({ nodo: d.slug, valor: d.valor, proyectos: d.proyectos }));
+
+// El material: en qué estuvo trabajando últimamente. Son nombres de
+// carpetas propias, no datos de nadie.
+const materialReciente = [...new Set(lista
+  .map(r => ({ p: r.split(/[\\/]/).at(-2), t: statSync(r).mtime }))
+  .sort((a, b) => b.t - a.t)
+  .map(x => x.p)
+)].slice(0, 5);
+
 const perfil = {
   generado: new Date().toISOString(),
+  huecos,
+  material_reciente: materialReciente,
   fuente: 'claude-code-local',
   sesiones,
   mensajes_propios: mensajes,
@@ -190,6 +219,11 @@ console.log('\nDónde te movés (0 a 100):');
 for (const d of dominio.slice(0, 10)) {
   const barra = '█'.repeat(Math.round(d.valor / 4));
   console.log(`  ${d.slug.padEnd(16)} ${String(d.valor).padStart(3)}  ${barra}  (${d.proyectos} proyectos)`);
+}
+
+if (huecos.length) {
+  console.log('\nHuecos (tenés nivel para esto y casi no aparece):');
+  for (const h of huecos) console.log(`  ${h.nodo.padEnd(16)} ${String(h.valor).padStart(3)}  en ${h.proyectos} proyectos`);
 }
 
 const ausentes = Object.keys(NODOS).filter(k => !nodos[k].hits);

@@ -129,14 +129,17 @@ document.getElementById('salir').addEventListener('click', async () => {
 
 const navegacion = document.getElementById('nav');
 const navHoy = document.getElementById('nav-hoy');
+const navReto = document.getElementById('nav-reto');
 const navLibros = document.getElementById('nav-libros');
 
 function marcarNav(cual) {
-  navHoy.setAttribute('aria-current', cual === 'hoy' ? 'page' : 'false');
-  navLibros.setAttribute('aria-current', cual === 'libros' ? 'page' : 'false');
+  for (const [boton, nombre] of [[navHoy, 'hoy'], [navReto, 'reto'], [navLibros, 'libros']]) {
+    boton.setAttribute('aria-current', cual === nombre ? 'page' : 'false');
+  }
 }
 
 navHoy.addEventListener('click', () => { marcarNav('hoy'); vistaHoy(); });
+navReto.addEventListener('click', async () => { marcarNav('reto'); vistaReto(await retoAbierto()); });
 navLibros.addEventListener('click', () => { marcarNav('libros'); vistaBiblioteca(); });
 
 async function dibujarRacha() {
@@ -832,7 +835,14 @@ async function vistaHoy() {
     el('h1', { text: cont.title }),
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
     el('p', { class: 'ayuda', text: `${cont.minutes} minutos` }),
-    el('button', { class: 'primario', onclick: () => vistaLeccion(prox.id, cont), text: 'Leer' })
+    el('button', { class: 'primario', onclick: () => vistaLeccion(prox.id, cont), text: 'Leer' }),
+    (await retoAbierto())
+      ? el('button', {
+          class: 'link',
+          text: 'Tenés un reto esperando',
+          onclick: async () => { marcarNav('reto'); vistaReto(await retoAbierto()); }
+        })
+      : null
   );
 }
 
@@ -1132,6 +1142,106 @@ function vistaPieza(libro, piezas, pieza, estado) {
       }),
       el('div', { class: 'secundarias' }, [
         el('button', { text: 'Volver al libro', onclick: () => vistaLibro(libro, estado) })
+      ])
+    ])
+  );
+}
+
+// ============================================================
+// Retos
+// ============================================================
+// La otra promesa visible: ejercicios sobre tus propios problemas.
+// No son compartidos: cada reto es de una persona, porque está hecho
+// sobre lo que esa persona tiene entre manos.
+// ============================================================
+async function retoAbierto() {
+  const { data } = await db
+    .from('challenges').select('*')
+    .eq('profile_id', perfil.id)
+    .in('status', ['propuesto', 'haciendo'])
+    .order('created_at', { ascending: false })
+    .limit(1);
+  return (data || [])[0] || null;
+}
+
+async function vistaReto(reto) {
+  if (!reto) {
+    return pintar(
+      el('h1', { text: 'Sin retos por ahora' }),
+      el('p', { class: 'bajada', text: 'Los retos salen del cruce entre lo que te falta y lo que estás haciendo. Cuando aparezca uno que valga la pena, va a estar acá.' })
+    );
+  }
+
+  if (reto.status === 'propuesto') {
+    await db.from('challenges').update({ status: 'haciendo' }).eq('id', reto.id);
+    reto.status = 'haciendo';
+  }
+
+  const marca = { dificultad: null, sirvio: null };
+  const notas = el('textarea', { id: 'notas', placeholder: 'Qué te salió, qué no, qué aprendiste…' });
+
+  const escala = el('div', { class: 'escala' });
+  for (let n = 1; n <= 10; n++) {
+    escala.append(el('button', {
+      text: String(n), 'aria-pressed': 'false',
+      onclick: (ev) => {
+        [...escala.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
+        ev.currentTarget.setAttribute('aria-pressed', 'true');
+        marca.dificultad = n;
+      }
+    }));
+  }
+
+  const pulgares = el('div', { class: 'pulgares' });
+  for (const [v, t] of [['1', '👍 Sirvió'], ['-1', '👎 No sirvió']]) {
+    pulgares.append(el('button', {
+      'data-v': v, text: t, 'aria-pressed': 'false',
+      onclick: (ev) => {
+        [...pulgares.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
+        ev.currentTarget.setAttribute('aria-pressed', 'true');
+        marca.sirvio = parseInt(v, 10);
+      }
+    }));
+  }
+
+  const cerrar = async (status) => {
+    await db.from('challenges').update({
+      status,
+      dificultad: marca.dificultad,
+      sirvio: marca.sirvio,
+      notas: notas.value.trim() || null,
+      answered_at: new Date().toISOString()
+    }).eq('id', reto.id);
+    if (status === 'hecho') await marcarActividad('reto');
+    marcarNav('hoy');
+    vistaHoy();
+  };
+
+  const cuerpo = el('article');
+  cuerpo.append(markdown(reto.body_md));
+
+  pintar(
+    el('p', { class: 'paso', text: 'Reto' }),
+    el('h1', { text: reto.title }),
+    el('p', { class: 'ayuda', text: `${reto.minutes} minutos` }),
+    cuerpo,
+    reto.porque ? el('p', { class: 'fuente', text: `Por qué este: ${reto.porque}` }) : null,
+    el('div', { class: 'cierre' }, [
+      el('label', { for: 'notas', text: '¿Cómo te fue?' }),
+      notas,
+      el('div', { style: 'height:20px' }),
+      el('label', { text: 'Del 1 al 10, ¿cuánto te costó?' }),
+      escala,
+      el('div', { class: 'escala-pies' }, [
+        el('span', { text: 'Fácil' }),
+        el('span', { text: 'Durísimo' })
+      ]),
+      el('label', { text: '¿Te sirvió?' }),
+      pulgares,
+      el('button', { class: 'primario', text: 'Lo hice', onclick: () => cerrar('hecho') }),
+      el('div', { class: 'secundarias' }, [
+        el('button', { text: 'Seguir después', onclick: () => { marcarNav('hoy'); vistaHoy(); } }),
+        el('button', { text: 'No es para mí', onclick: () => cerrar('descartado') })
       ])
     ])
   );
