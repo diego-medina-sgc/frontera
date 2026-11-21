@@ -550,10 +550,38 @@ async function vistaPegarLasTuyas() {
     placeholder: 'Pegá acá el texto de tus instrucciones…'
   });
 
+  // Saber que las tenés no es lo mismo que acordarte dónde están. El
+  // camino es el mismo lugar donde se ponen, así que se reusa la capa de
+  // ejecución de la lección 1, pero plegada: quien se acuerda no la abre.
+  const usadas = [...elegidas.usa];
+  let ayuda = null;
+  if (leccion1Id && usadas.length) {
+    const { data: capas } = await db
+      .from('lesson_contents').select('*')
+      .eq('lesson_id', leccion1Id).eq('lang', perfil.lang).in('tool_id', usadas);
+
+    if (capas?.length) {
+      ayuda = el('details', { class: 'plegable' });
+      ayuda.append(el('summary', { text: '¿No te acordás dónde las tenés guardadas?' }));
+      ayuda.append(el('p', { class: 'ayuda', text: 'Están en el mismo lugar donde se ponen. Este es el camino en las herramientas que marcaste:' }));
+      for (const c of capas) {
+        const bloque = el('div', { class: 'tarjeta' }, [el('h2', { text: c.title })]);
+        const a = el('article');
+        a.append(markdown(c.body_md));
+        bloque.append(a);
+        ayuda.append(bloque);
+      }
+      if (usadas.length > 1) {
+        ayuda.append(el('p', { class: 'ayuda', text: 'Si tenés instrucciones distintas en cada herramienta, pegá las de la que más usás, o juntá todas en el mismo campo.' }));
+      }
+    }
+  }
+
   pintar(
     el('p', { class: 'paso', text: 'Lo último' }),
     el('h1', { text: 'Pegá las tuyas' }),
     el('p', { class: 'bajada', text: 'Si me las dejás, puedo traducirte lo que te enseñe a tu forma de trabajar en vez de darte lo genérico. Son tuyas y quedan solo en tu cuenta.' }),
+    ayuda,
     el('label', { for: 'mias', text: 'Tus instrucciones personales' }),
     ta,
     el('button', {
