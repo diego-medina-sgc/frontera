@@ -348,6 +348,46 @@ async function dibujarRacha() {
   elRacha.textContent = n > 0 ? `${n} ${n === 1 ? 'semana' : 'semanas'}` : '';
 }
 
+// La semana como una fila de días, no como un número en una esquina.
+// La idea es de Lightly: ver la semana entera hace que un día vacío sea
+// un hueco visible y no un reproche. Por eso los días que faltan se
+// dibujan punteados y no en rojo.
+async function filaDeLaSemana() {
+  const hoy = new Date();
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
+
+  const desde = lunes.toISOString().slice(0, 10);
+  const { data } = await db
+    .from('activity').select('day')
+    .eq('profile_id', perfil.id).gte('day', desde);
+
+  const hechos = new Set((data || []).map(r => r.day));
+  const fila = el('div', { class: 'semana' });
+  const letras = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(lunes);
+    d.setDate(lunes.getDate() + i);
+    const clave = d.toISOString().slice(0, 10);
+
+    const estado = hechos.has(clave) ? 'hecho'
+      : clave === hoy.toISOString().slice(0, 10) ? 'hoy'
+      : d > hoy ? 'porvenir' : 'vacio';
+
+    fila.append(el('div', { class: 'dia dia-' + estado }, [
+      el('div', { class: 'dia-punto', text: estado === 'hecho' ? '✓' : '' }),
+      el('div', { class: 'dia-letra', text: letras[i] })
+    ]));
+  }
+
+  const cuantos = [...hechos].length;
+  return el('div', { class: 'semana-caja' }, [
+    el('div', { class: 'semana-texto', text: cuantos === 0 ? 'Esta semana' : `${cuantos} ${cuantos === 1 ? 'día' : 'días'} esta semana` }),
+    fila
+  ]);
+}
+
 async function marcarActividad(kind) {
   const hoy = new Date().toISOString().slice(0, 10);
   await db.from('activity').upsert(
@@ -1016,6 +1056,8 @@ async function vistaHoy() {
   const repaso = await repasoPendiente();
   if (repaso) return vistaRepaso(repaso);
 
+  const semana = await filaDeLaSemana();
+
   // Ruteo: solo lecciones dentro del nivel de la persona, en orden del
   // track, y que no haya contestado todavía.
   const { data: hechas } = await db
@@ -1029,6 +1071,12 @@ async function vistaHoy() {
 
   // Orden: lo nuevo del mundo primero, después los temas de frontera que
   // no caducan, y al final el track ordenado de fundamentos.
+  // Nada se acumula. El competidor de esta app no es otra app: es la
+  // carpeta de newsletters que nadie abre, con la culpa adentro. Por eso
+  // una lección de radar que no leíste en diez días desaparece y no deja
+  // rastro. No hay pendientes, no hay contador, no hay deuda.
+  const vence = new Date(Date.now() - 10 * 864e5).toISOString();
+
   for (const [kind, columna, asc] of [
     ['radar', 'created_at', false],
     ['frontera', 'created_at', false],
@@ -1042,6 +1090,7 @@ async function vistaHoy() {
       .gte('level_ceiling', perfil.level)
       .order(columna, { ascending: asc });
 
+    if (kind === 'radar') q = q.gte('created_at', vence);
     if (ya.length) q = q.not('id', 'in', `(${ya.join(',')})`);
 
     const { data: candidatas } = await q;
@@ -1061,8 +1110,9 @@ async function vistaHoy() {
     // El mundo no produce algo que valga la pena todos los días. Para eso
     // está la biblioteca: lo que no caduca, cuando la frontera está quieta.
     return pintar(
+      semana,
       el('h1', { text: 'Por hoy está' }),
-      el('p', { class: 'bajada', text: 'No hay nada nuevo para vos en este momento. Cuando aparezca algo que valga tu tiempo, te va a estar esperando acá.' }),
+      el('p', { class: 'bajada', text: 'No hay nada nuevo que valga tus minutos. No quedó nada pendiente: lo que no apareció hoy, no te lo debés.' }),
       el('button', {
         class: 'primario',
         text: 'Mientras tanto, ir a la biblioteca',
@@ -1072,6 +1122,7 @@ async function vistaHoy() {
   }
 
   pintar(
+    semana,
     el('p', { class: 'paso', text: { radar: 'Salió esto', frontera: 'Frontera' }[prox.kind] || 'Hoy' }),
     el('h1', { text: cont.title }),
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
