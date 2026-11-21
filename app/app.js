@@ -244,6 +244,9 @@ const PREGUNTAS = [
     key: 'largo',
     pregunta: '¿Cómo preferís que te respondan?',
     ayuda: 'Esto es lo que más cambia el resultado de todo lo demás.',
+    // Las tres preguntas de estilo solo sirven para redactar el texto.
+    // A quien ya tiene sus instrucciones no se las preguntamos.
+    soloSiGenera: true,
     tipo: 'opciones',
     opciones: [
       { v: 'corto',    t: 'Corto y al grano. Dame la conclusión' },
@@ -254,6 +257,7 @@ const PREGUNTAS = [
   {
     key: 'tono',
     pregunta: '¿Con qué tono?',
+    soloSiGenera: true,
     tipo: 'opciones',
     opciones: [
       { v: 'directo', t: 'Directo, sin vueltas ni halagos' },
@@ -275,6 +279,7 @@ const PREGUNTAS = [
     key: 'no_quiero',
     pregunta: '¿Qué te molesta de cómo te responde hoy?',
     ayuda: 'Esta es la que casi nadie escribe y la que más se agradece después. Si no se te ocurre nada, dejala vacía.',
+    soloSiGenera: true,
     tipo: 'texto',
     opcional: true,
     ej: 'Que arranque con halagos, que me liste diez opciones cuando pedí una, que me diga que consulte a un profesional.'
@@ -285,13 +290,55 @@ const respuestas = {};
 const elegidas = { usa: new Set(), quiere: new Set() };
 let leccion1Id = null;
 
+// El camino define cuánto onboarding hace falta. Quien ya tiene sus
+// instrucciones armadas no necesita que le expliquen qué son ni que se las
+// redactemos: solo necesitamos conocerlo, que es la otra mitad del Paso 1.
+let camino = null;
+
+function generamosTexto() {
+  return camino !== 'ya_las_tengo';
+}
+
+function preguntasActivas() {
+  return PREGUNTAS.filter(q => !q.soloSiGenera || generamosTexto());
+}
+
 function vistaPaso1() {
+  const elegir = (valor, siguiente) => {
+    camino = valor;
+    siguiente();
+  };
+
+  pintar(
+    el('p', { class: 'paso', text: 'Paso 1' }),
+    el('h1', { text: 'Tus instrucciones personales' }),
+    el('p', { class: 'bajada', text: 'Todas las herramientas de IA tienen un lugar donde dejás escrito, una sola vez, quién sos y cómo querés que te hablen. Antes de arrancar quiero saber en qué punto estás.' }),
+
+    el('button', { class: 'tarjeta libro', onclick: () => elegir('no_se', vistaQueSon) }, [
+      el('span', { class: 'titulo', text: 'No sé qué son' }),
+      el('span', { class: 'autor', text: 'Te explico para qué sirven y las armamos juntos' })
+    ]),
+
+    el('button', { class: 'tarjeta libro', onclick: () => elegir('no_las_tengo', vistaHerramientas) }, [
+      el('span', { class: 'titulo', text: 'Sé lo que son, pero no las tengo' }),
+      el('span', { class: 'autor', text: 'Vamos directo a armarlas' })
+    ]),
+
+    el('button', { class: 'tarjeta libro', onclick: () => elegir('ya_las_tengo', vistaHerramientas) }, [
+      el('span', { class: 'titulo', text: 'Ya las tengo armadas' }),
+      el('span', { class: 'autor', text: 'Unas pocas preguntas para conocerte y listo' })
+    ])
+  );
+}
+
+function vistaQueSon() {
   pintar(
     el('p', { class: 'paso', text: 'Paso 1' }),
     el('h1', { text: 'Armemos tus instrucciones' }),
     el('p', { class: 'bajada', text: 'Cada vez que abrís una conversación con una IA, empieza de cero: no sabe quién sos ni cómo te gusta que te hablen. Eso se arregla una sola vez y queda para siempre.' }),
-    el('div', { class: 'aviso', text: `Son ${PREGUNTAS.length} preguntas cortas. Al final te vas con un texto listo para pegar en tu herramienta, y vas a ver la diferencia con tus propios ojos.` }),
-    el('button', { class: 'primario', onclick: vistaHerramientas, text: 'Empezar' })
+    el('div', { class: 'aviso', text: `Son ${preguntasActivas().length} preguntas cortas. Al final te vas con un texto listo para pegar en tu herramienta, y vas a ver la diferencia con tus propios ojos.` }),
+    el('button', { class: 'primario', onclick: vistaHerramientas, text: 'Empezar' }),
+    el('button', { class: 'link', text: 'Volver', onclick: vistaPaso1 })
   );
 }
 
@@ -325,16 +372,18 @@ function vistaHerramientas() {
 }
 
 function vistaPregunta(i) {
-  const q = PREGUNTAS[i];
+  const lista = preguntasActivas();
+  const q = lista[i];
   const nodos = [
-    el('p', { class: 'paso', text: `Pregunta ${i + 1} de ${PREGUNTAS.length}` }),
+    el('p', { class: 'paso', text: `Pregunta ${i + 1} de ${lista.length}` }),
     el('h1', { text: q.pregunta })
   ];
   if (q.ayuda) nodos.push(el('p', { class: 'bajada', text: q.ayuda }));
 
   const seguir = (valor) => {
     if (valor !== undefined) respuestas[q.key] = valor;
-    i + 1 < PREGUNTAS.length ? vistaPregunta(i + 1) : vistaInstrucciones();
+    if (i + 1 < lista.length) return vistaPregunta(i + 1);
+    return generamosTexto() ? vistaInstrucciones() : vistaPegarLasTuyas();
   };
 
   if (q.tipo === 'opciones') {
@@ -412,13 +461,12 @@ function armarInstrucciones(r) {
   return lineas.join('\n');
 }
 
-async function vistaInstrucciones() {
-  const texto = armarInstrucciones(respuestas);
+// Guardado común a los tres caminos: respuestas de la entrevista, perfil
+// derivado y herramientas. El context_summary es lo que después permite
+// traducir cada lección al contexto real de la persona.
+async function guardarPerfil(texto) {
   const nivel = parseInt(respuestas.uso_mas_complejo || '0', 10);
 
-  // Guardado: respuestas de la entrevista, perfil derivado y herramientas.
-  // El perfil derivado (context_summary) es lo que después permite traducir
-  // cada lección al contexto real de la persona.
   await db.from('interview_answers').upsert(
     Object.entries(respuestas).map(([q_key, answer]) => ({
       profile_id: perfil.id, q_key, answer: String(answer), updated_at: new Date().toISOString()
@@ -447,6 +495,79 @@ async function vistaInstrucciones() {
 
   perfil.level = nivel;
   perfil.personal_instructions = texto;
+  perfil.lang = respuestas.idioma === 'en' ? 'en' : 'es';
+  // Sin esto, la primera lección después del onboarding no muestra la capa
+  // de la herramienta recién elegida hasta que la persona recargue.
+  misHerramientas = [...elegidas.usa];
+}
+
+// Cierre del Paso 1, común a los tres caminos.
+async function finalizar(estadoLeccion1) {
+  if (leccion1Id) {
+    await db.from('lesson_state').upsert({
+      profile_id: perfil.id,
+      lesson_id: leccion1Id,
+      status: estadoLeccion1,
+      answered_at: new Date().toISOString()
+    }, { onConflict: 'profile_id,lesson_id' });
+  }
+
+  const ahora = new Date().toISOString();
+  await db.from('profiles').update({ onboarded_at: ahora }).eq('id', perfil.id);
+  perfil.onboarded_at = ahora;
+  navegacion.hidden = false;
+  await marcarActividad('leccion');
+  vistaHoy();
+}
+
+// ------------------------------------------------------------
+// Camino corto: ya tiene sus instrucciones armadas
+// ------------------------------------------------------------
+async function vistaPegarLasTuyas() {
+  await guardarPerfil(null);
+
+  // El id de la lección 1 se necesita para marcarla. En los otros caminos
+  // se obtiene al mostrar dónde pegar el texto; acá no pasamos por ahí.
+  const { data: lec } = await db
+    .from('lessons').select('id').eq('slug', 'f01-instrucciones-personales').single();
+  leccion1Id = lec?.id ?? null;
+
+  const ta = el('textarea', {
+    id: 'mias',
+    style: 'min-height:220px',
+    placeholder: 'Pegá acá el texto de tus instrucciones…'
+  });
+
+  pintar(
+    el('p', { class: 'paso', text: 'Lo último' }),
+    el('h1', { text: 'Pegá las tuyas' }),
+    el('p', { class: 'bajada', text: 'Si me las dejás, puedo traducirte lo que te enseñe a tu forma de trabajar en vez de darte lo genérico. Son tuyas y quedan solo en tu cuenta.' }),
+    el('label', { for: 'mias', text: 'Tus instrucciones personales' }),
+    ta,
+    el('button', {
+      class: 'primario',
+      text: 'Guardar y empezar',
+      onclick: async () => {
+        const texto = ta.value.trim();
+        if (texto) {
+          await db.from('profiles').update({ personal_instructions: texto }).eq('id', perfil.id);
+          perfil.personal_instructions = texto;
+        }
+        // Ya sabe lo que son: la lección 1 no tiene nada que enseñarle.
+        await finalizar('ya_la_sabia');
+      }
+    }),
+    el('button', {
+      class: 'link',
+      text: 'Ahora no, las pego después',
+      onclick: () => finalizar('ya_la_sabia')
+    })
+  );
+}
+
+async function vistaInstrucciones() {
+  const texto = armarInstrucciones(respuestas);
+  await guardarPerfil(texto);
 
   const copiar = el('button', {
     text: 'Copiar el texto',
@@ -539,20 +660,7 @@ function vistaPrueba() {
 
         // El Paso 1 ES la lección 1: se marca hecha para no servirla de nuevo
         // al día siguiente como si no hubiera pasado nada.
-        if (leccion1Id) {
-          await db.from('lesson_state').upsert({
-            profile_id: perfil.id,
-            lesson_id: leccion1Id,
-            status: 'hecha',
-            answered_at: new Date().toISOString()
-          }, { onConflict: 'profile_id,lesson_id' });
-        }
-
-        await db.from('profiles').update({ onboarded_at: new Date().toISOString() }).eq('id', perfil.id);
-        perfil.onboarded_at = new Date().toISOString();
-        navegacion.hidden = false;
-        await marcarActividad('leccion');
-        vistaHoy();
+        await finalizar('hecha');
       }
     })
   );
