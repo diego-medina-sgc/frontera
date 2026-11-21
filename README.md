@@ -136,6 +136,39 @@ arrastrar la carpeta (o lo conectamos al repo para que se actualice solo).
 Si preferís probar local y tenés Python instalado, también sirve:
 `python -m http.server 8080` dentro de `app/`, y abrís `http://localhost:8080`.
 
+## El radar
+
+El radar tiene dos mitades, y están pensadas para que la segunda nunca
+cueste plata.
+
+**Ingesta** (`jobs/radar.mjs`). Sale a buscar y guarda lo que encuentra,
+sin juzgar nada. Cinco fuentes gratuitas y sin key: arXiv cs.AI y cs.CL
+(los papers, donde la novedad nace), GitHub (qué se está construyendo),
+Simon Willison (uno de los pocos que filtra bien) y Hacker News con piso
+de 80 puntos (qué se discute). Ventana de tres días.
+
+Probarlo sin tocar la base:
+
+```powershell
+node jobs/radar.mjs
+```
+
+Para que escriba, copiar `jobs/.env.example` a `jobs/.env`, completar la
+secret key, y:
+
+```powershell
+node jobs/radar.mjs --guardar
+```
+
+Lo que ya está en la base no se duplica: lo decide el índice único sobre
+el hash de la URL.
+
+**Triage y redacción** (pendiente). Es la mitad que importa: decidir qué
+de todo eso es nuevo de verdad, qué le sirve a cada nivel, y escribir la
+lección. Corre con la suscripción de Claude desde esta máquina, no con una
+API paga. Sin esa mitad, el radar junta ruido: de 105 señales de un día
+cualquiera, las que valen la pena son dos o tres.
+
 ## Acceso de Claude a la base (opcional)
 
 Mi conexión a Supabase está autorizada solo para la organización de SGC, así
