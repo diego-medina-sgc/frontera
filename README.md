@@ -1,5 +1,10 @@
 # Frontera
 
+**En vivo: https://frontera-bhv.pages.dev**
+
+(el nombre `frontera` a secas ya estaba tomado en pages.dev, por eso el sufijo)
+
+
 App de aprendizaje continuo sobre IA. No es un feed: detecta el nivel real de
 la persona, filtra el mundo por novedad genuina y enseña el salto al nivel
 siguiente.
@@ -83,6 +88,28 @@ Copiá la **publishable key** (empieza con `sb_publishable_`) y pegala en
 
 Esa key es pública por diseño: no habilita nada que la seguridad por fila no
 permita. La `service_role` nunca va en el front ni en el repo.
+
+### Volver a publicar después de un cambio
+
+El proyecto en Cloudflare Pages es `frontera`, por subida directa (no está
+conectado a Git todavía). Para publicar una versión nueva:
+
+1. Empaquetar la carpeta `app`:
+
+   `Compress-Archive -Path "C:\Users\Usuario\Desktop\Claude\Code\Frontera\app\*" -DestinationPath "$env:TEMP\frontera.zip" -Force`
+
+2. Entrar a https://dash.cloudflare.com → Workers & Pages → `frontera`
+   → **Create deployment**, y subir el zip.
+
+Si el empaquetado falla diciendo que un archivo está en uso, es el servidor
+local de pruebas: cerralo primero.
+
+### Pendiente de seguridad
+
+El alta de usuarios está **abierta**: cualquiera con el link puede crearse
+una cuenta. Para un círculo chico conviene, una vez que estén todos
+registrados, apagar *Allow new users to sign up* en
+https://supabase.com/dashboard/project/lboyidbtjxjkhwupysks/auth/providers
 
 ### 4. Publicarla (y recién ahí probarla)
 
