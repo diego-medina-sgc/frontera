@@ -79,14 +79,23 @@ Copiá la **publishable key** (empieza con `sb_publishable_`) y pegala en
 Esa key es pública por diseño: no habilita nada que la seguridad por fila no
 permita. La `service_role` nunca va en el front ni en el repo.
 
-### 4. Probarla
+### 4. Publicarla (y recién ahí probarla)
 
-Abrí `app/index.html` en el navegador. Debería pedirte mail y contraseña,
-dejarte crear cuenta y arrancar el Paso 1.
+**Abrir `app/index.html` haciendo doble clic NO funciona.** La app usa módulos
+de JavaScript y el navegador los bloquea cuando el archivo viene del disco.
+Hay que servirla por http. La vía más corta, gratis y sin instalar nada:
 
-### 5. Deploy (pendiente)
+1. Entrá a https://dash.cloudflare.com (cuenta gratis si no tenés)
+2. Menú izquierdo → **Workers & Pages** → **Create** → pestaña **Pages**
+3. Elegí **Upload assets** y ponele nombre `frontera`
+4. Arrastrá la carpeta `app` completa
+5. **Deploy**
 
-Cloudflare Pages, gratis, apuntando a la carpeta `app/`.
+Queda en `https://frontera.pages.dev`. Cada vez que haya cambios, se vuelve a
+arrastrar la carpeta (o lo conectamos al repo para que se actualice solo).
+
+Si preferís probar local y tenés Python instalado, también sirve:
+`python -m http.server 8080` dentro de `app/`, y abrís `http://localhost:8080`.
 
 ## Acceso de Claude a la base (opcional)
 
