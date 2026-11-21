@@ -115,16 +115,26 @@ const prefs = {
   }
 };
 
-function aplicarPreferencias() {
-  const tema = prefs.leer('tema', 'sistema');
-  if (tema === 'sistema') document.documentElement.removeAttribute('data-tema');
-  else document.documentElement.setAttribute('data-tema', tema);
-
+// El tamaño es inofensivo fuera del lector: solo afecta al texto largo.
+function aplicarTamano() {
   const tam = prefs.leer('tamano', 'normal');
   document.documentElement.style.setProperty('--lectura-tam', (TAMANOS[tam] ?? TAMANOS.normal) + 'px');
 }
 
-aplicarPreferencias();
+// El tema de lectura, en cambio, vive SOLO mientras leés. Afuera la app
+// sigue el modo del sistema, como hace Apple Books: el sepia es una
+// condición de lectura, no una identidad del producto.
+function aplicarTemaLectura() {
+  const tema = prefs.leer('tema', 'sistema');
+  if (tema === 'sistema') document.documentElement.removeAttribute('data-tema');
+  else document.documentElement.setAttribute('data-tema', tema);
+}
+
+function quitarTemaLectura() {
+  document.documentElement.removeAttribute('data-tema');
+}
+
+aplicarTamano();
 
 const barraProgreso = document.getElementById('progreso');
 let limpiarLector = null;
@@ -133,6 +143,7 @@ let limpiarLector = null;
 function salirDelLector() {
   if (limpiarLector) { limpiarLector(); limpiarLector = null; }
   document.body.classList.remove('leyendo', 'mostrar-barra');
+  quitarTemaLectura();
   if (barraProgreso) { barraProgreso.hidden = true; barraProgreso.style.width = '0'; }
 }
 
@@ -150,7 +161,8 @@ function panelAjustes(alCambiar) {
           [...f.querySelectorAll('button')].forEach(b => b.setAttribute('aria-pressed', 'false'));
           ev.currentTarget.setAttribute('aria-pressed', 'true');
           prefs.guardar(clave, valor);
-          aplicarPreferencias();
+          aplicarTamano();
+          aplicarTemaLectura();
           alCambiar?.();
         }
       }));
@@ -234,6 +246,7 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
 
   // ---- comportamiento de lectura ----
   document.body.classList.add('leyendo');
+  aplicarTemaLectura();
   if (barraProgreso) barraProgreso.hidden = false;
 
   let ultimo = window.scrollY;
