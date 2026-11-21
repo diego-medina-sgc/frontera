@@ -253,6 +253,12 @@ label { display: block; font-weight: 550; margin: 0 0 8px; }
 
 .tarjeta h2 { margin-top: 0; }
 
+/* La capa de ejecución va dentro de una tarjeta: un punto menos que el
+   cuerpo, para que se lea como un anexo y no como la lección. */
+.tarjeta article { font-size: 18px; }
+.tarjeta article > p:first-child { font-size: 18px; line-height: 1.68; }
+.tarjeta article p:last-child { margin-bottom: 0; }
+
 .instrucciones {
   white-space: pre-wrap;
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;

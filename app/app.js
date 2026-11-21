@@ -18,6 +18,9 @@ const elRacha = document.getElementById('racha');
 
 let perfil = null;
 let herramientas = [];
+// Las herramientas que la persona declaró usar. Definen qué capa de
+// ejecución se le muestra al pie de cada lección.
+let misHerramientas = [];
 
 // ------------------------------------------------------------
 // Utilidades de DOM (nada de innerHTML con texto de la base)
@@ -102,6 +105,10 @@ async function arrancar() {
   const { data: tools } = await db
     .from('tools').select('*').eq('active', true).order('sort');
   herramientas = tools || [];
+
+  const { data: mias } = await db
+    .from('profile_tools').select('tool_id').eq('profile_id', perfil.id).eq('relation', 'usa');
+  misHerramientas = (mias || []).map(r => r.tool_id);
 
   barra.hidden = false;
   await dibujarRacha();
@@ -591,8 +598,19 @@ async function vistaHoy() {
 // ============================================================
 // Lección + los dos clics
 // ============================================================
-function vistaLeccion(lessonId, cont) {
+async function vistaLeccion(lessonId, cont) {
   const estado = { comprension: null, interes: null };
+
+  // La capa de ejecución: lo mismo explicado para la herramienta que la
+  // persona usa. Si usa dos, ve las dos. Si no declaró ninguna, no ve
+  // ninguna y la lección conceptual se sostiene sola.
+  let capas = [];
+  if (misHerramientas.length) {
+    const { data } = await db
+      .from('lesson_contents').select('*')
+      .eq('lesson_id', lessonId).eq('lang', perfil.lang).in('tool_id', misHerramientas);
+    capas = data || [];
+  }
 
   const escala = el('div', { class: 'escala' });
   for (let n = 1; n <= 10; n++) {
@@ -647,9 +665,19 @@ function vistaLeccion(lessonId, cont) {
   const cuerpo = el('article');
   cuerpo.append(markdown(cont.body_md));
 
+  const ejecucion = document.createDocumentFragment();
+  for (const c of capas) {
+    const t = el('div', { class: 'tarjeta' }, [el('h2', { text: c.title })]);
+    const a = el('article');
+    a.append(markdown(c.body_md));
+    t.append(a);
+    ejecucion.append(t);
+  }
+
   pintar(
     el('h1', { text: cont.title }),
     cuerpo,
+    ejecucion,
     el('div', { class: 'cierre' }, [
       el('label', { text: 'Del 1 al 10, ¿cuánto entendiste?' }),
       escala,
