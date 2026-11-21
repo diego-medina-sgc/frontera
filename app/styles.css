@@ -328,6 +328,9 @@ nav {
   margin-left: 20px;
 }
 
+/* Igual que con el header: display:flex le gana a [hidden] */
+nav[hidden] { display: none; }
+
 nav button {
   background: none;
   border: none;

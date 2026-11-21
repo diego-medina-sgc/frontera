@@ -113,6 +113,11 @@ async function arrancar() {
   barra.hidden = false;
   await dibujarRacha();
 
+  // Durante el Paso 1 la navegación no existe: con ella a la vista, un
+  // toque en "Hoy" saltea el onboarding entero y la persona termina en una
+  // lección sin que la app sepa nada de ella.
+  navegacion.hidden = !perfil.onboarded_at;
+
   if (!perfil.onboarded_at) return vistaPaso1();
   return vistaHoy();
 }
@@ -122,6 +127,7 @@ document.getElementById('salir').addEventListener('click', async () => {
   location.reload();
 });
 
+const navegacion = document.getElementById('nav');
 const navHoy = document.getElementById('nav-hoy');
 const navLibros = document.getElementById('nav-libros');
 
@@ -544,6 +550,7 @@ function vistaPrueba() {
 
         await db.from('profiles').update({ onboarded_at: new Date().toISOString() }).eq('id', perfil.id);
         perfil.onboarded_at = new Date().toISOString();
+        navegacion.hidden = false;
         await marcarActividad('leccion');
         vistaHoy();
       }
