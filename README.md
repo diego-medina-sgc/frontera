@@ -169,6 +169,27 @@ lección. Corre con la suscripción de Claude desde esta máquina, no con una
 API paga. Sin esa mitad, el radar junta ruido: de 105 señales de un día
 cualquiera, las que valen la pena son dos o tres.
 
+## Perfil por evidencia
+
+`jobs/evidencia.mjs` lee tus sesiones locales de Claude Code
+(`~/.claude/projects`) y deduce en qué temas te movés de verdad y cómo
+trabajás. No lo que declarás saber: lo que hacés.
+
+```powershell
+node jobs/evidencia.mjs
+```
+
+**La regla, que no se negocia:** todo se procesa en tu máquina y de este
+script nunca sale una línea de texto de tus conversaciones. Lo único que
+se escribe, y lo único que puede subir a la base, son números: cuántas
+veces apareció cada tema, en cuántos proyectos, en qué fechas. Ni una
+oración, ni un nombre, ni un fragmento.
+
+Para subir el perfil derivado hace falta `PROFILE_ID` además de las
+credenciales en `jobs/.env`.
+
+Pendiente: el export de claude.ai. Hoy solo lee Claude Code.
+
 ## Acceso de Claude a la base (opcional)
 
 Mi conexión a Supabase está autorizada solo para la organización de SGC, así
