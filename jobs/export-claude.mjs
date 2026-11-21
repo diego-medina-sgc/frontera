@@ -186,7 +186,7 @@ try {
       profile_id: env.PROFILE_ID,
       topic_id: porSlug[d.slug],
       mastery: Math.max(d.valor, previo[porSlug[d.slug]] ?? 0),
-      evidence: `${d.apariciones} apariciones en claude.ai y lo que ya traía Claude Code`,
+      evidence: `${d.hits} apariciones en claude.ai, combinado con Claude Code`,
       updated_at: new Date().toISOString()
     }));
 
