@@ -19,12 +19,14 @@
 // ============================================================
 
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { filtrar, informe } from './triage.mjs';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const GUARDAR = process.argv.includes('--guardar');
+const INFORME = process.argv.includes('--informe');
 const DIAS = 3; // ventana: nada más viejo que esto entra al radar
 
 // ------------------------------------------------------------
@@ -33,33 +35,59 @@ const DIAS = 3; // ventana: nada más viejo que esto entra al radar
 // primacy: 1 = primario (la novedad nace acá) · 2 = secundario
 //          3 = eco (alguien contando algo que ya pasó)
 const FUENTES = [
+  // --- Lo que las empresas efectivamente sacan. Acá nace lo que cambia
+  //     cómo trabajás mañana, que no es lo mismo que lo que nace en un paper.
   {
-    nombre: 'arXiv cs.AI',
-    kind: 'arxiv',
+    nombre: 'OpenAI',
+    kind: 'atom',
     primacy: 1,
-    url: 'http://export.arxiv.org/api/query'
-       + '?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=30'
+    url: 'https://openai.com/news/rss.xml'
   },
   {
-    nombre: 'arXiv cs.CL',
-    kind: 'arxiv',
+    nombre: 'Google AI',
+    kind: 'atom',
     primacy: 1,
-    url: 'http://export.arxiv.org/api/query'
-       + '?search_query=cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=20'
+    url: 'https://blog.google/technology/ai/rss/'
   },
   {
-    nombre: 'GitHub: repos de IA que empujan',
+    nombre: 'Hugging Face',
+    kind: 'atom',
+    primacy: 1,
+    url: 'https://huggingface.co/blog/feed.xml'
+  },
+  // Anthropic no publica feed. Lo que saca llega igual, con un día de
+  // retraso, por Simon Willison y por Hacker News.
+
+  // --- Lo que se está construyendo. Repos NUEVOS, no los consagrados:
+  //     ordenar por estrellas sin filtrar por fecha devuelve siempre los
+  //     mismos diez proyectos de siempre, que no son noticia.
+  {
+    nombre: 'GitHub: repos nuevos',
     kind: 'github',
     primacy: 1,
     url: 'https://api.github.com/search/repositories'
-       + '?q=topic:ai+pushed:>{DESDE}&sort=stars&order=desc&per_page=25'
+       + '?q=topic:ai+created:>{DESDE_MES}&sort=stars&order=desc&per_page=20'
   },
+
+  // --- Dónde nace la investigación. Se mantiene chico a propósito: de
+  //     acá sale mucho volumen y poca cosa accionable.
+  {
+    nombre: 'arXiv cs.AI',
+    kind: 'arxiv',
+    primacy: 2,
+    url: 'http://export.arxiv.org/api/query'
+       + '?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=15'
+  },
+
+  // --- Quien ya filtró por vos.
   {
     nombre: 'Simon Willison',
     kind: 'atom',
     primacy: 2,
     url: 'https://simonwillison.net/atom/everything/'
   },
+
+  // --- Qué se discute.
   {
     nombre: 'Lo que se discute (Hacker News)',
     kind: 'hn',
@@ -75,6 +103,7 @@ const FUENTES = [
 const hash = (url) => createHash('sha256').update(url.trim().toLowerCase()).digest('hex').slice(0, 32);
 
 const desdeISO = () => new Date(Date.now() - DIAS * 864e5).toISOString().slice(0, 10);
+const desdeMesISO = () => new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
 
 const limpiar = (s = '') => s
   .replace(/<[^>]*>/g, ' ')
@@ -169,7 +198,9 @@ async function recolectar() {
   const problemas = [];
 
   for (const f of FUENTES) {
-    const url = f.url.replace('{DESDE}', desdeISO());
+    const url = f.url
+      .replace('{DESDE}', desdeISO())
+      .replace('{DESDE_MES}', desdeMesISO());
     try {
       const crudo = await traer(url);
       const items = LECTORES[f.kind](crudo)
@@ -267,7 +298,21 @@ if (problemas.length) {
   console.log(`Fuentes con problemas: ${problemas.length}`);
 }
 
-if (GUARDAR) {
+if (INFORME) {
+  const resultado = filtrar(senales);
+  const texto = informe(resultado);
+  const carpeta = join(AQUI, 'salida');
+  mkdirSync(carpeta, { recursive: true });
+  const ruta = join(carpeta, `radar-${new Date().toISOString().slice(0, 10)}.md`);
+  writeFileSync(ruta, texto, 'utf8');
+
+  console.log(`\nFiltro: ${resultado.descartadas} descartadas, ${resultado.candidatas.length} candidatas\n`);
+  for (const [i, s] of resultado.candidatas.entries()) {
+    console.log(`${String(i + 1).padStart(2)}. [${String(s.puntos).padStart(2)}] ${recortar(s.titulo, 78)}`);
+    console.log(`        ${s.nodo || '—'} · ${s.motivos.join(', ') || 'sin marcas'}`);
+  }
+  console.log(`\nInforme completo: ${ruta}`);
+} else if (GUARDAR) {
   await guardar(senales);
 } else {
   console.log('\n--- Muestra (en seco, no se guardó nada) ---');

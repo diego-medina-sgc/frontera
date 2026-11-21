@@ -676,26 +676,33 @@ async function vistaHoy() {
     .from('lesson_state').select('lesson_id').eq('profile_id', perfil.id).not('answered_at', 'is', null);
   const ya = (hechas || []).map(r => r.lesson_id);
 
-  let q = db.from('lessons')
-    .select('id, slug, track_order, level_floor')
-    .eq('kind', 'fundamento')
-    .eq('published', true)
-    .lte('level_floor', perfil.level)
-    .gte('level_ceiling', perfil.level)
-    .order('track_order');
-
-  if (ya.length) q = q.not('id', 'in', `(${ya.join(',')})`);
-
-  const { data: candidatas } = await q;
-
-  // Una lección sin contenido escrito todavía no es un error: simplemente
-  // no existe para la persona. Se pasa a la siguiente que sí lo tenga.
+  // El radar va primero y lo más nuevo arriba: si el mundo produjo algo
+  // que te sirve, eso gana sobre seguir el track. El track es el piso,
+  // no la agenda.
   let prox = null, cont = null;
-  for (const c of candidatas || []) {
-    const { data } = await db
-      .from('lesson_contents').select('*')
-      .eq('lesson_id', c.id).eq('lang', perfil.lang).is('tool_id', null).maybeSingle();
-    if (data) { prox = c; cont = data; break; }
+
+  for (const [kind, columna, asc] of [['radar', 'created_at', false], ['fundamento', 'track_order', true]]) {
+    let q = db.from('lessons')
+      .select('id, slug, kind, track_order, created_at')
+      .eq('kind', kind)
+      .eq('published', true)
+      .lte('level_floor', perfil.level)
+      .gte('level_ceiling', perfil.level)
+      .order(columna, { ascending: asc });
+
+    if (ya.length) q = q.not('id', 'in', `(${ya.join(',')})`);
+
+    const { data: candidatas } = await q;
+
+    // Una lección sin contenido escrito todavía no es un error: simplemente
+    // no existe para la persona. Se pasa a la siguiente que sí lo tenga.
+    for (const c of candidatas || []) {
+      const { data } = await db
+        .from('lesson_contents').select('*')
+        .eq('lesson_id', c.id).eq('lang', perfil.lang).is('tool_id', null).maybeSingle();
+      if (data) { prox = c; cont = data; break; }
+    }
+    if (cont) break;
   }
 
   if (!cont) {
@@ -713,7 +720,7 @@ async function vistaHoy() {
   }
 
   pintar(
-    el('p', { class: 'paso', text: 'Hoy' }),
+    el('p', { class: 'paso', text: prox.kind === 'radar' ? 'Salió esto' : 'Hoy' }),
     el('h1', { text: cont.title }),
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
     el('p', { class: 'ayuda', text: `${cont.minutes} minutos` }),
