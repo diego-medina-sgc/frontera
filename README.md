@@ -188,7 +188,24 @@ oración, ni un nombre, ni un fragmento.
 Para subir el perfil derivado hace falta `PROFILE_ID` además de las
 credenciales en `jobs/.env`.
 
-Pendiente: el export de claude.ai. Hoy solo lee Claude Code.
+### La otra mitad: claude.ai
+
+Claude Code muestra lo que **construís**. El export de claude.ai muestra
+lo que **pensás y preguntás**, que suele ser otro conjunto de temas.
+
+Se consigue en claude.ai → Settings → Privacy → **Export data**. Llega un
+zip por mail con un `conversations.json` adentro.
+
+```powershell
+node jobs/export-claude.mjs ruta\al\conversations.json
+```
+
+Con `--guardar` combina con lo que ya había de Claude Code quedándose con
+el mayor de los dos por nodo: son dos miradas de la misma persona y lo
+que una ve y la otra no, suma.
+
+Misma regla: todo se procesa local, el archivo original no se copia a
+ningún lado y lo único que sube son conteos.
 
 ## Acceso de Claude a la base (opcional)
 
