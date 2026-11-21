@@ -470,7 +470,14 @@ function armarInstrucciones(r) {
 // derivado y herramientas. El context_summary es lo que después permite
 // traducir cada lección al contexto real de la persona.
 async function guardarPerfil(texto) {
-  const nivel = parseInt(respuestas.uso_mas_complejo || '0', 10);
+  const declarado = parseInt(respuestas.uso_mas_complejo || '0', 10);
+
+  // La evidencia le gana al autodiagnóstico. Si ya hay un nivel medido
+  // sobre lo que la persona hace de verdad, una respuesta en una
+  // entrevista no lo baja: la gente se subestima con mucha frecuencia.
+  const medido = perfil.level_source === 'evidencia' ? perfil.level : 0;
+  const nivel = Math.max(declarado, medido);
+  const fuente = nivel === medido && medido > declarado ? 'evidencia' : 'onboarding';
 
   await db.from('interview_answers').upsert(
     Object.entries(respuestas).map(([q_key, answer]) => ({
@@ -493,7 +500,7 @@ async function guardarPerfil(texto) {
     personal_instructions: texto,
     context_summary: `${respuestas.rol} ${respuestas.contexto}. Usa IA para: ${respuestas.usos}`,
     level: nivel,
-    level_source: 'onboarding',
+    level_source: fuente,
     level_updated_at: new Date().toISOString(),
     lang: respuestas.idioma === 'en' ? 'en' : 'es'
   }).eq('id', perfil.id);

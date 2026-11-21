@@ -263,18 +263,36 @@ const cab = {
   'Content-Type': 'application/json'
 };
 
-const topics = await (await fetch(`${env.SUPABASE_URL}/rest/v1/topics?select=id,slug`, { headers: cab })).json();
+const rt = await fetch(`${env.SUPABASE_URL}/rest/v1/topics?select=id,slug`, { headers: cab });
+if (!rt.ok) {
+  console.log(`\nLa base rechazó la lectura de topics: HTTP ${rt.status}`);
+  console.log(await rt.text());
+  console.log('\nRevisá que SUPABASE_SECRET_KEY en jobs/.env sea la secret key (sb_secret_...) y esté sin comillas.');
+  process.exit(1);
+}
+
+const topics = await rt.json();
+if (!Array.isArray(topics)) {
+  console.log('\nRespuesta inesperada al leer topics:', JSON.stringify(topics).slice(0, 300));
+  process.exit(1);
+}
+
 const porSlug = Object.fromEntries(topics.map(t => [t.slug, t.id]));
 
 const filas = dominio
-  .filter(d => porSlug[d.nodo])
+  .filter(d => porSlug[d.slug])
   .map(d => ({
     profile_id: env.PROFILE_ID,
-    topic_id: porSlug[d.nodo],
+    topic_id: porSlug[d.slug],
     mastery: d.valor,
     evidence: `${d.apariciones} apariciones en ${d.proyectos} proyectos de Claude Code`,
     updated_at: new Date().toISOString()
   }));
+
+if (!filas.length) {
+  console.log('\nNingún nodo del perfil coincidió con el mapa de la base. No subí nada.');
+  process.exit(1);
+}
 
 const r = await fetch(`${env.SUPABASE_URL}/rest/v1/topic_mastery?on_conflict=profile_id,topic_id`, {
   method: 'POST',
