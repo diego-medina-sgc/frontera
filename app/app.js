@@ -829,7 +829,13 @@ async function vistaHoy() {
   // no la agenda.
   let prox = null, cont = null;
 
-  for (const [kind, columna, asc] of [['radar', 'created_at', false], ['fundamento', 'track_order', true]]) {
+  // Orden: lo nuevo del mundo primero, después los temas de frontera que
+  // no caducan, y al final el track ordenado de fundamentos.
+  for (const [kind, columna, asc] of [
+    ['radar', 'created_at', false],
+    ['frontera', 'created_at', false],
+    ['fundamento', 'track_order', true]
+  ]) {
     let q = db.from('lessons')
       .select('id, slug, kind, track_order, created_at')
       .eq('kind', kind)
@@ -868,7 +874,7 @@ async function vistaHoy() {
   }
 
   pintar(
-    el('p', { class: 'paso', text: prox.kind === 'radar' ? 'Salió esto' : 'Hoy' }),
+    el('p', { class: 'paso', text: { radar: 'Salió esto', frontera: 'Frontera' }[prox.kind] || 'Hoy' }),
     el('h1', { text: cont.title }),
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
     el('p', { class: 'ayuda', text: `${cont.minutes} minutos` }),
