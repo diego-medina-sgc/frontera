@@ -38,7 +38,10 @@ function el(tag, props = {}, hijos = []) {
 }
 
 function pintar(...nodos) {
-  vista.replaceChildren(...nodos);
+  // Toda pantalla nueva sale del modo lectura. Si es un lector, se
+  // vuelve a entrar enseguida.
+  salirDelLector();
+  vista.replaceChildren(...nodos.filter(Boolean));
   window.scrollTo(0, 0);
 }
 
@@ -80,6 +83,188 @@ function markdown(texto) {
 
 function error(msg) {
   return el('p', { class: 'error', text: msg });
+}
+
+// ============================================================
+// El lector
+// ============================================================
+// Lo que hacen bien los lectores buenos, y que casi ninguna app web
+// se toma el trabajo de hacer:
+//
+//   · dejar elegir el tamaño del texto, que es LA función más usada
+//   · ofrecer sepia, que a los veinte minutos se agradece
+//   · decir cuánto falta en minutos y no en porcentaje
+//   · esconder la interfaz mientras leés y traerla al subir
+//   · acordarse de dónde quedaste
+//
+// Las preferencias viven en el navegador de cada uno: son de ese
+// aparato, no de la cuenta. Si el navegador las bloquea, la app
+// funciona igual con los valores por defecto.
+// ============================================================
+
+const TAMANOS = { chico: 17.5, normal: 19.5, grande: 22 };
+const PALABRAS_POR_MINUTO = 200;
+
+const prefs = {
+  leer(clave, porDefecto) {
+    try { return localStorage.getItem('frontera.' + clave) ?? porDefecto; }
+    catch { return porDefecto; }
+  },
+  guardar(clave, valor) {
+    try { localStorage.setItem('frontera.' + clave, valor); } catch { /* sin storage, se vive igual */ }
+  }
+};
+
+function aplicarPreferencias() {
+  const tema = prefs.leer('tema', 'sistema');
+  if (tema === 'sistema') document.documentElement.removeAttribute('data-tema');
+  else document.documentElement.setAttribute('data-tema', tema);
+
+  const tam = prefs.leer('tamano', 'normal');
+  document.documentElement.style.setProperty('--lectura-tam', (TAMANOS[tam] ?? TAMANOS.normal) + 'px');
+}
+
+aplicarPreferencias();
+
+const barraProgreso = document.getElementById('progreso');
+let limpiarLector = null;
+
+// Deja la pantalla como estaba antes de entrar a leer.
+function salirDelLector() {
+  if (limpiarLector) { limpiarLector(); limpiarLector = null; }
+  document.body.classList.remove('leyendo', 'mostrar-barra');
+  if (barraProgreso) { barraProgreso.hidden = true; barraProgreso.style.width = '0'; }
+}
+
+function panelAjustes(alCambiar) {
+  const panel = el('div', { class: 'ajustes', hidden: 'true' });
+
+  const fila = (etiqueta, clave, opciones, porDefecto) => {
+    const f = el('div', { class: 'ajustes-fila' }, [el('span', { text: etiqueta })]);
+    const actual = prefs.leer(clave, porDefecto);
+    for (const [valor, texto] of opciones) {
+      f.append(el('button', {
+        text: texto,
+        'aria-pressed': String(valor === actual),
+        onclick: (ev) => {
+          [...f.querySelectorAll('button')].forEach(b => b.setAttribute('aria-pressed', 'false'));
+          ev.currentTarget.setAttribute('aria-pressed', 'true');
+          prefs.guardar(clave, valor);
+          aplicarPreferencias();
+          alCambiar?.();
+        }
+      }));
+    }
+    return f;
+  };
+
+  panel.append(fila('Tamaño', 'tamano', [['chico', 'A'], ['normal', 'A'], ['grande', 'A']], 'normal'));
+  panel.append(fila('Fondo', 'tema', [['sistema', 'Auto'], ['claro', 'Claro'], ['sepia', 'Sepia'], ['oscuro', 'Oscuro']], 'sistema'));
+
+  // Los tres botones de tamaño se ven del tamaño que representan.
+  const tam = panel.querySelectorAll('.ajustes-fila')[0].querySelectorAll('button');
+  tam[0].style.fontSize = '13px';
+  tam[1].style.fontSize = '16px';
+  tam[2].style.fontSize = '20px';
+
+  return panel;
+}
+
+// `clave` identifica la pieza para recordar dónde quedaste.
+function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave, minutos }) {
+  const cuerpo = el('article');
+  cuerpo.append(markdown(cuerpoMd));
+
+  // El total sale de lo que dice la ficha, no de un cálculo propio: si
+  // la tarjeta prometió nueve minutos y el lector dice tres, el que
+  // queda mal es el producto.
+  const palabras = cuerpoMd.trim().split(/\s+/).length;
+  const total = minutos || Math.max(1, Math.round(palabras / PALABRAS_POR_MINUTO));
+  const restante = el('span', { class: 'restante', text: `${total} min` });
+
+  const ajustes = panelAjustes();
+  const botonAa = el('button', {
+    class: 'aa',
+    text: 'Aa',
+    'aria-expanded': 'false',
+    onclick: (ev) => {
+      const abierto = ajustes.hidden;
+      ajustes.hidden = !abierto;
+      ev.currentTarget.setAttribute('aria-expanded', String(abierto));
+    }
+  });
+
+  const barra = el('div', { class: 'lector-barra' }, [
+    epigrafe ? el('span', { text: epigrafe }) : null,
+    botonAa,
+    restante
+  ]);
+
+  const nodos = [
+    barra,
+    ajustes,
+    el('h1', { text: titulo }),
+    bajada ? el('p', { class: 'bajada', text: bajada }) : null
+  ];
+
+  // Retomar: solo si quedó a más de un 8% y sin terminar.
+  const guardado = parseFloat(prefs.leer('pos.' + clave, '0'));
+  let avisoRetomar = null;
+  if (guardado > 0.08 && guardado < 0.92) {
+    avisoRetomar = el('div', { class: 'retomar' }, [
+      el('span', { text: `Lo dejaste por el ${Math.round(guardado * 100)}%` }),
+      el('button', {
+        text: 'Seguir ahí',
+        onclick: () => {
+          const alto = document.documentElement.scrollHeight - window.innerHeight;
+          window.scrollTo({ top: alto * guardado, behavior: 'smooth' });
+          avisoRetomar.remove();
+        }
+      })
+    ]);
+    nodos.push(avisoRetomar);
+  }
+
+  nodos.push(cuerpo);
+  if (extras) nodos.push(extras);
+  if (pie) nodos.push(pie);
+  if (cierre) nodos.push(cierre);
+
+  pintar(...nodos);
+
+  // ---- comportamiento de lectura ----
+  document.body.classList.add('leyendo');
+  if (barraProgreso) barraProgreso.hidden = false;
+
+  let ultimo = window.scrollY;
+  let guardarEn = null;
+
+  const alScrollear = () => {
+    const alto = document.documentElement.scrollHeight - window.innerHeight;
+    const y = window.scrollY;
+    const avance = alto > 0 ? Math.min(1, Math.max(0, y / alto)) : 0;
+
+    if (barraProgreso) barraProgreso.style.width = (avance * 100) + '%';
+
+    const faltan = Math.round(total * (1 - avance));
+    restante.textContent = avance > 0.97 ? 'Listo' : `Faltan ${Math.max(1, faltan)} min`;
+
+    // La barra vuelve al subir o al llegar arriba de todo.
+    if (y < 60 || y < ultimo - 8) document.body.classList.add('mostrar-barra');
+    else if (y > ultimo + 8) document.body.classList.remove('mostrar-barra');
+    ultimo = y;
+
+    clearTimeout(guardarEn);
+    guardarEn = setTimeout(() => prefs.guardar('pos.' + clave, String(avance)), 400);
+  };
+
+  window.addEventListener('scroll', alScrollear, { passive: true });
+  alScrollear();
+
+  limpiarLector = () => {
+    window.removeEventListener('scroll', alScrollear);
+    clearTimeout(guardarEn);
+  };
 }
 
 // ============================================================
@@ -962,10 +1147,7 @@ async function vistaLeccion(lessonId, cont) {
     vistaHoy();
   };
 
-  const cuerpo = el('article');
-  cuerpo.append(markdown(cont.body_md));
-
-  const ejecucion = document.createDocumentFragment();
+  const ejecucion = el('div');
   for (const c of capas) {
     const t = el('div', { class: 'tarjeta' }, [el('h2', { text: c.title })]);
     const a = el('article');
@@ -974,11 +1156,15 @@ async function vistaLeccion(lessonId, cont) {
     ejecucion.append(t);
   }
 
-  pintar(
-    el('h1', { text: cont.title }),
-    cuerpo,
-    ejecucion,
-    el('div', { class: 'cierre' }, [
+  lector({
+    epigrafe: 'Lección',
+    titulo: cont.title,
+    bajada: cont.hook || null,
+    cuerpoMd: cont.body_md,
+    clave: 'leccion.' + lessonId,
+    minutos: cont.minutes,
+    extras: capas.length ? ejecucion : null,
+    cierre: el('div', { class: 'cierre' }, [
       el('label', { text: 'Del 1 al 10, ¿cuánto entendiste?' }),
       escala,
       el('div', { class: 'escala-pies' }, [
@@ -993,7 +1179,7 @@ async function vistaLeccion(lessonId, cont) {
         el('button', { text: 'Dejarlo para después', onclick: vistaHoy })
       ])
     ])
-  );
+  });
 }
 
 // ============================================================
@@ -1151,15 +1337,14 @@ function vistaPieza(libro, piezas, pieza, estado) {
     }));
   }
 
-  const cuerpo = el('article');
-  cuerpo.append(markdown(pieza.body_md));
-
-  pintar(
-    el('p', { class: 'paso', text: `${libro.title} · ${libro.author}` }),
-    el('h1', { text: pieza.title }),
-    cuerpo,
-    el('p', { class: 'fuente', text: `Las ideas son de ${libro.author}. El texto es una síntesis propia, no un extracto del libro.` }),
-    el('div', { class: 'cierre' }, [
+  lector({
+    epigrafe: libro.title,
+    titulo: pieza.title,
+    cuerpoMd: pieza.body_md,
+    clave: 'pieza.' + pieza.id,
+    minutos: pieza.minutes,
+    pie: el('p', { class: 'fuente', text: `Las ideas son de ${libro.author}. El texto es una síntesis propia, no un extracto del libro.` }),
+    cierre: el('div', { class: 'cierre' }, [
       el('label', { text: 'Del 1 al 10, ¿cuánto entendiste?' }),
       escala,
       el('div', { class: 'escala-pies' }, [
@@ -1187,7 +1372,7 @@ function vistaPieza(libro, piezas, pieza, estado) {
         el('button', { text: 'Volver al libro', onclick: () => vistaLibro(libro, estado) })
       ])
     ])
-  );
+  });
 }
 
 // ============================================================
