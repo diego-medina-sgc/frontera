@@ -394,6 +394,49 @@ nav button[aria-current="page"] {
   margin-top: 36px;
 }
 
+/* ---------- mapa ---------- */
+.nodo {
+  display: grid;
+  grid-template-columns: 1fr 120px auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--borde);
+}
+
+.nodo-nombre { font-size: 16px; }
+.nodo-lejos { opacity: .45; }
+
+.barra {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--fondo-2);
+  overflow: hidden;
+}
+
+.barra-llena {
+  height: 100%;
+  background: var(--acento);
+  border-radius: 999px;
+  transition: width .4s ease;
+}
+
+.nodo-marcas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 52px;
+  justify-content: flex-end;
+}
+
+/* El punto dice que el campo se movió ahí hace poco */
+.punto { color: var(--ok); font-size: 11px; letter-spacing: 2px; }
+
+@media (max-width: 480px) {
+  .nodo { grid-template-columns: 1fr 72px auto; gap: 8px; }
+  .nodo-nombre { font-size: 15px; }
+}
+
 /* ---------- avisos ---------- */
 .aviso {
   border-left: 3px solid var(--acento);

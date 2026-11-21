@@ -130,16 +130,18 @@ document.getElementById('salir').addEventListener('click', async () => {
 const navegacion = document.getElementById('nav');
 const navHoy = document.getElementById('nav-hoy');
 const navReto = document.getElementById('nav-reto');
+const navMapa = document.getElementById('nav-mapa');
 const navLibros = document.getElementById('nav-libros');
 
 function marcarNav(cual) {
-  for (const [boton, nombre] of [[navHoy, 'hoy'], [navReto, 'reto'], [navLibros, 'libros']]) {
+  for (const [boton, nombre] of [[navHoy, 'hoy'], [navReto, 'reto'], [navMapa, 'mapa'], [navLibros, 'libros']]) {
     boton.setAttribute('aria-current', cual === nombre ? 'page' : 'false');
   }
 }
 
 navHoy.addEventListener('click', () => { marcarNav('hoy'); vistaHoy(); });
 navReto.addEventListener('click', async () => { marcarNav('reto'); vistaReto(await retoAbierto()); });
+navMapa.addEventListener('click', () => { marcarNav('mapa'); vistaMapa(); });
 navLibros.addEventListener('click', () => { marcarNav('libros'); vistaBiblioteca(); });
 
 async function dibujarRacha() {
@@ -1245,6 +1247,94 @@ async function vistaReto(reto) {
       ])
     ])
   );
+}
+
+// ============================================================
+// Mapa viviente
+// ============================================================
+// Dos cosas sobre el mismo nodo: cuánto te movés vos ahí, y cuánto se
+// mueve el campo. Donde el campo se mueve y vos no, esa es tu frontera.
+//
+// Es "viviente" porque ninguna de las dos columnas la escribí yo: el
+// dominio sale de lo que hacés y la actividad sale de lo que el radar
+// encontró en las últimas semanas.
+// ============================================================
+async function vistaMapa() {
+  const [{ data: topics }, { data: dominios }, { data: hechas }, { data: senales }] = await Promise.all([
+    db.from('topics').select('id, slug, name_es, kind, level_floor, sort').order('sort'),
+    db.from('topic_mastery').select('topic_id, mastery, evidence').eq('profile_id', perfil.id),
+    db.from('lesson_state').select('lesson_id, status').eq('profile_id', perfil.id).not('answered_at', 'is', null),
+    db.from('signals').select('topic_id').eq('status', 'promovida')
+  ]);
+
+  // Dominio por evidencia externa, si lo hay.
+  const porEvidencia = Object.fromEntries((dominios || []).map(d => [d.topic_id, d]));
+
+  // Y lo que la app vio por su cuenta: lecciones contestadas por nodo.
+  const ids = (hechas || []).map(h => h.lesson_id);
+  let porLecciones = {};
+  if (ids.length) {
+    const { data: ls } = await db.from('lessons').select('id, topic_id').in('id', ids);
+    for (const l of ls || []) {
+      if (l.topic_id) porLecciones[l.topic_id] = (porLecciones[l.topic_id] || 0) + 1;
+    }
+  }
+
+  const actividad = {};
+  for (const s of senales || []) if (s.topic_id) actividad[s.topic_id] = (actividad[s.topic_id] || 0) + 1;
+
+  const valorDe = (t) => Math.max(
+    porEvidencia[t.id]?.mastery ?? 0,
+    Math.min(100, (porLecciones[t.id] || 0) * 30)
+  );
+
+  const encendidos = (topics || []).filter(t => valorDe(t) >= 50).length;
+
+  // La frontera: donde el campo se mueve más y vos menos.
+  const frontera = (topics || [])
+    .filter(t => t.kind === 'frontera' && t.level_floor <= perfil.level)
+    .map(t => ({ t, brecha: (actividad[t.id] || 0) * 20 + (60 - valorDe(t)) }))
+    .sort((a, b) => b.brecha - a.brecha)[0]?.t;
+
+  const nodos = [
+    el('h1', { text: 'El mapa' }),
+    el('p', { class: 'bajada', text: `Encendiste ${encendidos} de ${topics?.length ?? 0} nodos. La barra es lo que sabés; el punto, lo que se movió el campo este tiempo.` })
+  ];
+
+  if (frontera) {
+    nodos.push(el('div', { class: 'aviso', text: `Tu frontera está en ${frontera.name_es}: es donde más se mueve el campo y menos te movés vos.` }));
+  }
+
+  for (const kind of ['fundamento', 'frontera']) {
+    const grupo = (topics || []).filter(t => t.kind === kind);
+    if (!grupo.length) continue;
+
+    nodos.push(el('h2', { text: kind === 'fundamento' ? 'Fundamentos' : 'Frontera' }));
+
+    for (const t of grupo) {
+      const valor = valorDe(t);
+      const activo = actividad[t.id] || 0;
+      const fuera = t.level_floor > perfil.level;
+
+      const fila = el('div', { class: 'nodo' + (fuera ? ' nodo-lejos' : '') });
+      fila.append(el('div', { class: 'nodo-nombre', text: t.name_es }));
+
+      const barra = el('div', { class: 'barra' });
+      barra.append(el('div', { class: 'barra-llena', style: `width:${valor}%` }));
+      fila.append(barra);
+
+      const marcas = el('div', { class: 'nodo-marcas' });
+      if (activo) marcas.append(el('span', { class: 'punto', title: `${activo} novedades`, text: '●'.repeat(Math.min(activo, 3)) }));
+      if (fuera) marcas.append(el('span', { class: 'tema', text: 'más adelante' }));
+      fila.append(marcas);
+
+      nodos.push(fila);
+    }
+  }
+
+  nodos.push(el('p', { class: 'fuente', text: 'Un nodo apagado no significa que no sepas: significa que la app todavía no tiene evidencia de que te muevas ahí.' }));
+
+  pintar(...nodos);
 }
 
 arrancar().catch(e => pintar(error('Algo se rompió: ' + e.message)));
