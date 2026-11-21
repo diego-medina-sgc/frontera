@@ -87,7 +87,18 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+
+html {
+  /* Sin esto el texto se infla en horizontal */
+  -webkit-text-size-adjust: 100%;
+  /* El destello gris al tocar es la señal más fuerte de "esto es una
+     página web y no una app" */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Que tirar hacia abajo no dispare el recargar del navegador ni el
+   rebote de toda la página: esto es una app, no un documento. */
+html, body { overscroll-behavior: none; }
 
 body {
   margin: 0;
@@ -95,10 +106,16 @@ body {
   color: var(--texto);
   font: 16px/1.6 var(--ui);
   -webkit-font-smoothing: antialiased;
-  -webkit-tap-highlight-color: transparent;
 }
 
-button, .chip { -webkit-user-select: none; user-select: none; }
+/* Lo que es un control no se selecciona ni abre el menú de copiar al
+   mantener apretado. El texto del contenido sí, siempre. */
+button, a, [role="button"], .chip, .dia {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 
 /* ---------- barra ---------- */
 header {
@@ -254,7 +271,7 @@ button {
 }
 
 button:active { transform: scale(.985); }
-@media (hover: hover) { button:hover { border-color: var(--texto-3); } }
+@media (hover: hover) and (pointer: fine) { button:hover { border-color: var(--texto-3); } }
 
 /* La acción principal es negra, como en los buenos paneles */
 .primario {
@@ -268,7 +285,7 @@ button:active { transform: scale(.985); }
   margin-top: 8px;
 }
 
-@media (hover: hover) { .primario:hover { border-color: var(--negro); opacity: .9; } }
+@media (hover: hover) and (pointer: fine) { .primario:hover { border-color: var(--negro); opacity: .9; } }
 
 .link {
   background: none;
