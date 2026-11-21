@@ -669,7 +669,115 @@ function vistaPrueba() {
 // ============================================================
 // Hoy
 // ============================================================
+// ============================================================
+// Repaso espaciado
+// ============================================================
+// Lo único que evita que lo aprendido se borre, y casi ninguna app de IA
+// lo hace. No vuelve a explicar: pregunta dos cosas y se va. Toma veinte
+// segundos y va antes que lo nuevo del día.
+// ============================================================
+async function repasoPendiente() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const { data } = await db
+    .from('reviews')
+    .select('id, stage, lesson_id, due_on')
+    .eq('profile_id', perfil.id)
+    .is('done_at', null)
+    .lte('due_on', hoy)
+    .order('due_on')
+    .limit(1);
+  return (data || [])[0] || null;
+}
+
+async function vistaRepaso(repaso) {
+  const { data: cont } = await db
+    .from('lesson_contents').select('title, hook, body_md')
+    .eq('lesson_id', repaso.lesson_id).eq('lang', perfil.lang).is('tool_id', null).maybeSingle();
+
+  if (!cont) {
+    // La lección desapareció o cambió de idioma: el repaso no tiene sentido.
+    await db.from('reviews').update({ done_at: new Date().toISOString() }).eq('id', repaso.id);
+    return vistaHoy();
+  }
+
+  const marca = { recordaba: null, uso: null };
+
+  const grupo = (opciones, campo) => {
+    const caja = el('div', { class: 'pulgares' });
+    for (const [valor, texto] of opciones) {
+      caja.append(el('button', {
+        text: texto,
+        'aria-pressed': 'false',
+        'data-v': valor === true || valor === 2 ? '1' : '-1',
+        onclick: (ev) => {
+          [...caja.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
+          ev.currentTarget.setAttribute('aria-pressed', 'true');
+          marca[campo] = valor;
+        }
+      }));
+    }
+    return caja;
+  };
+
+  const guardar = async () => {
+    await db.from('reviews').update({
+      done_at: new Date().toISOString(),
+      recordaba: marca.recordaba,
+      uso: marca.uso
+    }).eq('id', repaso.id);
+
+    // Si no se acordaba, vuelve antes. Si lo usó de verdad, no hace falta
+    // insistir: se salta el resto de la escalera.
+    if (marca.recordaba === 0) {
+      const f = new Date();
+      f.setDate(f.getDate() + 2);
+      await db.from('reviews').upsert({
+        profile_id: perfil.id,
+        lesson_id: repaso.lesson_id,
+        stage: repaso.stage + 10,
+        due_on: f.toISOString().slice(0, 10)
+      }, { onConflict: 'profile_id,lesson_id,stage' });
+    } else if (marca.uso === true) {
+      await db.from('reviews')
+        .update({ done_at: new Date().toISOString() })
+        .eq('profile_id', perfil.id).eq('lesson_id', repaso.lesson_id).is('done_at', null);
+    }
+
+    await marcarActividad('repaso');
+    vistaHoy();
+  };
+
+  const dias = Math.round((Date.now() - new Date(repaso.due_on).getTime()) / 864e5);
+
+  pintar(
+    el('p', { class: 'paso', text: 'Repaso' }),
+    el('h1', { text: cont.title }),
+    cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
+    el('p', { class: 'ayuda', text: dias > 0 ? `Lo viste hace unos días` : 'Lo viste hace poco' }),
+
+    el('div', { class: 'cierre', style: 'margin-top:28px' }, [
+      el('label', { text: '¿Te acordabas?' }),
+      grupo([[2, 'Sí'], [1, 'Más o menos'], [0, 'No']], 'recordaba'),
+      el('div', { style: 'height:24px' }),
+      el('label', { text: '¿Lo usaste en algo real?' }),
+      grupo([[true, 'Sí'], [false, 'Todavía no']], 'uso'),
+      el('button', { class: 'primario', text: 'Listo', onclick: guardar }),
+      el('div', { class: 'secundarias' }, [
+        el('button', {
+          text: 'Volver a leerlo',
+          onclick: () => vistaLeccion(repaso.lesson_id, cont)
+        })
+      ])
+    ])
+  );
+}
+
 async function vistaHoy() {
+  // El repaso va primero: son veinte segundos y es lo que evita que todo
+  // lo anterior se borre. Después sigue lo nuevo.
+  const repaso = await repasoPendiente();
+  if (repaso) return vistaRepaso(repaso);
+
   // Ruteo: solo lecciones dentro del nivel de la persona, en orden del
   // track, y que no haya contestado todavía.
   const { data: hechas } = await db
@@ -784,12 +892,18 @@ async function vistaLeccion(lessonId, cont) {
 
     // Repaso espaciado: 3, 10 y 30 días. Lo que se entendió a medias
     // vuelve antes. Nunca como castigo, solo vuelve.
-    const dias = (estado.comprension ?? 10) <= 6 ? [2, 7, 21] : [3, 10, 30];
-    await db.from('reviews').upsert(dias.map((d, i) => {
-      const f = new Date();
-      f.setDate(f.getDate() + d);
-      return { profile_id: perfil.id, lesson_id: lessonId, stage: i, due_on: f.toISOString().slice(0, 10) };
-    }), { onConflict: 'profile_id,lesson_id,stage' });
+    //
+    // Pero a lo que alguien marcó como sabido no se le agenda nada: a
+    // una persona avanzada que saltea media docena de lecciones le
+    // caerían veinte repasos de cosas que ya domina, y ahí la perdés.
+    if (status === 'hecha') {
+      const dias = (estado.comprension ?? 10) <= 6 ? [2, 7, 21] : [3, 10, 30];
+      await db.from('reviews').upsert(dias.map((d, i) => {
+        const f = new Date();
+        f.setDate(f.getDate() + d);
+        return { profile_id: perfil.id, lesson_id: lessonId, stage: i, due_on: f.toISOString().slice(0, 10) };
+      }), { onConflict: 'profile_id,lesson_id,stage' });
+    }
 
     await marcarActividad('leccion');
     vistaHoy();
