@@ -115,6 +115,17 @@ document.getElementById('salir').addEventListener('click', async () => {
   location.reload();
 });
 
+const navHoy = document.getElementById('nav-hoy');
+const navLibros = document.getElementById('nav-libros');
+
+function marcarNav(cual) {
+  navHoy.setAttribute('aria-current', cual === 'hoy' ? 'page' : 'false');
+  navLibros.setAttribute('aria-current', cual === 'libros' ? 'page' : 'false');
+}
+
+navHoy.addEventListener('click', () => { marcarNav('hoy'); vistaHoy(); });
+navLibros.addEventListener('click', () => { marcarNav('libros'); vistaBiblioteca(); });
+
 async function dibujarRacha() {
   const { data } = await db.rpc('racha_semanal', { p_profile: perfil.id });
   const n = data ?? 0;
@@ -555,9 +566,16 @@ async function vistaHoy() {
   }
 
   if (!cont) {
+    // El mundo no produce algo que valga la pena todos los días. Para eso
+    // está la biblioteca: lo que no caduca, cuando la frontera está quieta.
     return pintar(
       el('h1', { text: 'Por hoy está' }),
-      el('p', { class: 'bajada', text: 'No hay nada nuevo para vos en este momento. Cuando aparezca algo que valga tu tiempo, te va a estar esperando acá.' })
+      el('p', { class: 'bajada', text: 'No hay nada nuevo para vos en este momento. Cuando aparezca algo que valga tu tiempo, te va a estar esperando acá.' }),
+      el('button', {
+        class: 'primario',
+        text: 'Mientras tanto, ir a la biblioteca',
+        onclick: () => { marcarNav('libros'); vistaBiblioteca(); }
+      })
     );
   }
 
@@ -645,6 +663,200 @@ function vistaLeccion(lessonId, cont) {
       el('div', { class: 'secundarias' }, [
         el('button', { text: 'Esto ya lo sabía', onclick: () => guardar('ya_la_sabia') }),
         el('button', { text: 'Dejarlo para después', onclick: vistaHoy })
+      ])
+    ])
+  );
+}
+
+// ============================================================
+// Biblioteca
+// ============================================================
+// La otra mitad del producto. El radar trae lo perecedero; acá vive lo
+// que no caduca. Y es lo que la app tiene para dar los días en que el
+// mundo no produjo nada que valga la pena.
+//
+// Nunca se guarda ni se muestra texto de los libros: son las ideas,
+// escritas con palabras propias y atribuidas al autor.
+// ============================================================
+
+const ESTADOS = {
+  no_lei:      { t: 'No lo leí',                  d: 'Las ideas centrales, y qué envejeció mal' },
+  hace_tiempo: { t: 'Lo leí hace tiempo',         d: 'Repaso de lo que probablemente se te borró' },
+  fresco:      { t: 'Lo leí y lo tengo fresco',   d: 'Nada de resumen: aplicación y discusión' }
+};
+
+async function vistaBiblioteca() {
+  const { data: libros } = await db.from('books').select('*').order('title');
+  const { data: estados } = await db.from('book_state').select('*').eq('profile_id', perfil.id);
+  const porLibro = Object.fromEntries((estados || []).map(e => [e.book_id, e]));
+
+  const nodos = [
+    el('h1', { text: 'Biblioteca' }),
+    el('p', { class: 'bajada', text: 'Lo que no caduca. Elegí un libro y decime si lo leíste: según eso cambia por completo lo que te muestro.' })
+  ];
+
+  for (const libro of libros || []) {
+    const est = porLibro[libro.id];
+    const tarjeta = el('button', { class: 'tarjeta libro', onclick: () => abrirLibro(libro) }, [
+      el('span', { class: 'titulo', text: libro.title }),
+      el('span', { class: 'autor', text: libro.author + (libro.year ? ` · ${libro.year}` : '') })
+    ]);
+
+    if (libro.themes?.length) {
+      const temas = el('span', { class: 'temas' });
+      for (const t of libro.themes) temas.append(el('span', { class: 'tema', text: t }));
+      tarjeta.append(temas);
+    }
+
+    if (est) tarjeta.append(el('span', { class: 'marca-leido', text: ESTADOS[est.read_state].t }));
+    nodos.push(tarjeta);
+  }
+
+  pintar(...nodos);
+}
+
+async function abrirLibro(libro) {
+  const { data: est } = await db
+    .from('book_state').select('*')
+    .eq('profile_id', perfil.id).eq('book_id', libro.id).maybeSingle();
+
+  if (est) return vistaLibro(libro, est.read_state);
+  return vistaEstadoLibro(libro);
+}
+
+// La pregunta que hace que esto no sea Blinkist.
+function vistaEstadoLibro(libro, cambiando = false) {
+  const nodos = [
+    el('p', { class: 'paso', text: libro.author }),
+    el('h1', { text: libro.title }),
+    el('p', { class: 'bajada', text: cambiando ? '¿Cambió tu situación con este libro?' : 'Antes de empezar: ¿lo leíste?' })
+  ];
+
+  for (const [valor, info] of Object.entries(ESTADOS)) {
+    nodos.push(el('button', {
+      class: 'tarjeta libro',
+      onclick: async () => {
+        await db.from('book_state').upsert({
+          profile_id: perfil.id,
+          book_id: libro.id,
+          read_state: valor,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'profile_id,book_id' });
+        vistaLibro(libro, valor);
+      }
+    }, [
+      el('span', { class: 'titulo', text: info.t }),
+      el('span', { class: 'autor', text: info.d })
+    ]));
+  }
+
+  nodos.push(el('button', { class: 'link', text: 'Volver a la biblioteca', onclick: vistaBiblioteca }));
+  pintar(...nodos);
+}
+
+async function vistaLibro(libro, estado) {
+  const { data: piezas } = await db
+    .from('book_pieces').select('*')
+    .eq('book_id', libro.id).eq('lang', perfil.lang).eq('for_read_state', estado)
+    .order('idx');
+
+  const { data: hechas } = await db
+    .from('book_piece_state').select('piece_id').eq('profile_id', perfil.id);
+  const ya = new Set((hechas || []).map(r => r.piece_id));
+
+  const nodos = [
+    el('p', { class: 'paso', text: libro.author }),
+    el('h1', { text: libro.title })
+  ];
+
+  if (!piezas?.length) {
+    nodos.push(el('p', { class: 'bajada', text: 'Este libro todavía no está procesado. Va a estar disponible pronto.' }));
+    nodos.push(el('button', { class: 'link', text: 'Volver a la biblioteca', onclick: vistaBiblioteca }));
+    return pintar(...nodos);
+  }
+
+  const listas = piezas.filter(p => ya.has(p.id)).length;
+  nodos.push(el('p', { class: 'progreso', text: `${ESTADOS[estado].t} · ${listas} de ${piezas.length} leídas` }));
+
+  for (const p of piezas) {
+    nodos.push(el('button', {
+      class: 'tarjeta libro',
+      onclick: () => vistaPieza(libro, piezas, p, estado)
+    }, [
+      el('span', { class: 'titulo', text: p.title }),
+      el('span', { class: 'autor', text: ya.has(p.id) ? 'Leída' : `${p.minutes} minutos` })
+    ]));
+  }
+
+  nodos.push(el('button', { class: 'link', text: 'Cambiar si lo leí o no', onclick: () => vistaEstadoLibro(libro, true) }));
+  nodos.push(el('button', { class: 'link', text: 'Volver a la biblioteca', onclick: vistaBiblioteca }));
+  pintar(...nodos);
+}
+
+function vistaPieza(libro, piezas, pieza, estado) {
+  const marca = { comprension: null, interes: null };
+
+  const escala = el('div', { class: 'escala' });
+  for (let n = 1; n <= 10; n++) {
+    escala.append(el('button', {
+      text: String(n),
+      'aria-pressed': 'false',
+      onclick: (ev) => {
+        [...escala.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
+        ev.currentTarget.setAttribute('aria-pressed', 'true');
+        marca.comprension = n;
+      }
+    }));
+  }
+
+  const pulgares = el('div', { class: 'pulgares' });
+  for (const [v, t] of [['1', '👍 Me interesa'], ['-1', '👎 No es para mí']]) {
+    pulgares.append(el('button', {
+      'data-v': v,
+      text: t,
+      'aria-pressed': 'false',
+      onclick: (ev) => {
+        [...pulgares.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
+        ev.currentTarget.setAttribute('aria-pressed', 'true');
+        marca.interes = parseInt(v, 10);
+      }
+    }));
+  }
+
+  const cuerpo = el('article');
+  cuerpo.append(markdown(pieza.body_md));
+
+  pintar(
+    el('p', { class: 'paso', text: `${libro.title} · ${libro.author}` }),
+    el('h1', { text: pieza.title }),
+    cuerpo,
+    el('p', { class: 'fuente', text: `Las ideas son de ${libro.author}. El texto es una síntesis propia, no un extracto del libro.` }),
+    el('div', { class: 'cierre' }, [
+      el('label', { text: 'Del 1 al 10, ¿cuánto entendiste?' }),
+      escala,
+      el('div', { class: 'escala-pies' }, [
+        el('span', { text: 'Nada' }),
+        el('span', { text: 'Todo' })
+      ]),
+      el('label', { text: '¿Te interesó?' }),
+      pulgares,
+      el('button', {
+        class: 'primario',
+        text: 'Listo',
+        onclick: async () => {
+          await db.from('book_piece_state').upsert({
+            profile_id: perfil.id,
+            piece_id: pieza.id,
+            comprension: marca.comprension,
+            interes: marca.interes,
+            answered_at: new Date().toISOString()
+          }, { onConflict: 'profile_id,piece_id' });
+          await marcarActividad('libro');
+          vistaLibro(libro, estado);
+        }
+      }),
+      el('div', { class: 'secundarias' }, [
+        el('button', { text: 'Volver al libro', onclick: () => vistaLibro(libro, estado) })
       ])
     ])
   );

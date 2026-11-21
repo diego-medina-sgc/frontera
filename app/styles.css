@@ -16,7 +16,12 @@
   --ok: #138a52;
   --no: #b4452f;
   --radio: 14px;
-  --ancho: 620px;
+  /* 60-70 caracteres por linea es lo que el ojo lee sin cansarse */
+  --ancho: 660px;
+  --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Para leer: serif. La app entera es texto largo, y en texto largo la
+     serif gana. Nada de fuentes web: mas rapido y funciona sin internet. */
+  --lectura: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -53,9 +58,13 @@ body {
   margin: 0;
   background: var(--fondo);
   color: var(--texto);
-  font: 17px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 17px/1.65 var(--ui);
   -webkit-font-smoothing: antialiased;
+  /* Que un toque sostenido no seleccione el texto de los botones */
+  -webkit-tap-highlight-color: transparent;
 }
+
+button, .chip { -webkit-user-select: none; user-select: none; }
 
 /* ---------- barra ---------- */
 header {
@@ -104,6 +113,42 @@ p { margin: 0 0 16px; }
 ul { margin: 0 0 16px; padding-left: 22px; }
 li { margin-bottom: 8px; }
 strong { font-weight: 650; }
+
+/* ---------- la superficie de lectura ----------
+   Todo lo que la app enseña se lee acá: lecciones, libros, radar.
+   Es la pantalla que mas importa del producto. */
+article {
+  font-family: var(--lectura);
+  font-size: 19.5px;
+  line-height: 1.72;
+  letter-spacing: 0.002em;
+}
+
+article p { margin: 0 0 22px; }
+
+article h2 {
+  font-family: var(--ui);
+  font-size: 20px;
+  margin: 40px 0 12px;
+}
+
+article h3 {
+  font-family: var(--ui);
+  font-size: 17px;
+  margin: 30px 0 10px;
+}
+
+article li { margin-bottom: 12px; }
+
+/* Primer parrafo apenas mas grande: entrada suave a la lectura */
+article > p:first-child { font-size: 21px; line-height: 1.6; }
+
+@media (max-width: 480px) {
+  article { font-size: 18.5px; line-height: 1.68; }
+  article > p:first-child { font-size: 19.5px; }
+  h1 { font-size: 27px; }
+  main { padding: 20px 18px calc(44px + env(safe-area-inset-bottom)); }
+}
 
 .bajada {
   color: var(--texto-2);
@@ -247,6 +292,13 @@ label { display: block; font-weight: 550; margin: 0 0 8px; }
   color: #fff;
 }
 
+/* Diez botones en 375px dan 30px cada uno: imposible de acertar con el
+   pulgar. En pantalla chica van en dos filas de cinco. */
+@media (max-width: 460px) {
+  .escala { grid-template-columns: repeat(5, 1fr); }
+  .escala button { min-height: 52px; font-size: 16px; }
+}
+
 .escala-pies {
   display: flex;
   justify-content: space-between;
@@ -262,6 +314,76 @@ label { display: block; font-weight: 550; margin: 0 0 8px; }
 
 .secundarias { display: flex; gap: 10px; margin-top: 20px; }
 .secundarias button { flex: 1; font-size: 15px; }
+
+/* ---------- navegación ---------- */
+nav {
+  display: flex;
+  gap: 4px;
+  margin-left: 20px;
+}
+
+nav button {
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  min-height: 0;
+  color: var(--texto-2);
+  font-size: 15px;
+  border-radius: 999px;
+}
+
+nav button[aria-current="page"] {
+  color: var(--texto);
+  background: var(--fondo-2);
+}
+
+/* ---------- biblioteca ---------- */
+.libro {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 18px 20px;
+  margin-bottom: 10px;
+}
+
+.libro .titulo { font-weight: 600; display: block; }
+.libro .autor { color: var(--texto-2); font-size: 15px; }
+
+.libro .marca-leido {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--acento);
+  margin-top: 6px;
+}
+
+.temas {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.tema {
+  font-size: 12px;
+  color: var(--texto-2);
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.progreso {
+  color: var(--texto-2);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.fuente {
+  color: var(--texto-2);
+  font-size: 14px;
+  border-top: 1px solid var(--borde);
+  padding-top: 14px;
+  margin-top: 36px;
+}
 
 /* ---------- avisos ---------- */
 .aviso {

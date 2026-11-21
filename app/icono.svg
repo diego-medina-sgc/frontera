@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Frontera">
+  <rect width="512" height="512" rx="112" fill="#0b0f14"/>
+  <!-- La frontera: lo conocido abajo, el borde, y lo que falta arriba -->
+  <path d="M96 352 L176 288 L256 312 L336 208 L416 152"
+        fill="none" stroke="#5a9cff" stroke-width="28"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="416" cy="152" r="34" fill="#5a9cff"/>
+  <path d="M96 400 H416" stroke="#243040" stroke-width="16" stroke-linecap="round"/>
+</svg>
