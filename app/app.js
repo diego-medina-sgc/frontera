@@ -248,13 +248,14 @@ const PREGUNTAS = [
 
 const respuestas = {};
 const elegidas = { usa: new Set(), quiere: new Set() };
+let leccion1Id = null;
 
 function vistaPaso1() {
   pintar(
     el('p', { class: 'paso', text: 'Paso 1' }),
     el('h1', { text: 'Armemos tus instrucciones' }),
     el('p', { class: 'bajada', text: 'Cada vez que abrís una conversación con una IA, empieza de cero: no sabe quién sos ni cómo te gusta que te hablen. Eso se arregla una sola vez y queda para siempre.' }),
-    el('div', { class: 'aviso', text: 'Son nueve preguntas cortas. Al final te vas con un texto listo para pegar en tu herramienta, y vas a ver la diferencia con tus propios ojos.' }),
+    el('div', { class: 'aviso', text: `Son ${PREGUNTAS.length} preguntas cortas. Al final te vas con un texto listo para pegar en tu herramienta, y vas a ver la diferencia con tus propios ojos.` }),
     el('button', { class: 'primario', onclick: vistaHerramientas, text: 'Empezar' })
   );
 }
@@ -440,6 +441,7 @@ async function vistaDondePegar() {
   const usadas = [...elegidas.usa];
   const { data: lec } = await db
     .from('lessons').select('id').eq('slug', 'f01-instrucciones-personales').single();
+  leccion1Id = lec?.id ?? null;
 
   let capas = [];
   if (lec && usadas.length) {
@@ -500,6 +502,17 @@ function vistaPrueba() {
           answer_after: despues.value.trim() || null
         }, { onConflict: 'profile_id' });
 
+        // El Paso 1 ES la lección 1: se marca hecha para no servirla de nuevo
+        // al día siguiente como si no hubiera pasado nada.
+        if (leccion1Id) {
+          await db.from('lesson_state').upsert({
+            profile_id: perfil.id,
+            lesson_id: leccion1Id,
+            status: 'hecha',
+            answered_at: new Date().toISOString()
+          }, { onConflict: 'profile_id,lesson_id' });
+        }
+
         await db.from('profiles').update({ onboarded_at: new Date().toISOString() }).eq('id', perfil.id);
         perfil.onboarded_at = new Date().toISOString();
         await marcarActividad('leccion');
@@ -525,26 +538,28 @@ async function vistaHoy() {
     .eq('published', true)
     .lte('level_floor', perfil.level)
     .gte('level_ceiling', perfil.level)
-    .order('track_order')
-    .limit(1);
+    .order('track_order');
 
   if (ya.length) q = q.not('id', 'in', `(${ya.join(',')})`);
 
-  const { data: proximas } = await q;
-  const prox = (proximas || [])[0];
+  const { data: candidatas } = await q;
 
-  if (!prox) {
-    return pintar(
-      el('h1', { text: 'Por hoy está' }),
-      el('p', { class: 'bajada', text: 'Terminaste todo lo que tengo cargado para tu nivel. Las lecciones 2 a 10 y la biblioteca entran en la próxima tanda.' })
-    );
+  // Una lección sin contenido escrito todavía no es un error: simplemente
+  // no existe para la persona. Se pasa a la siguiente que sí lo tenga.
+  let prox = null, cont = null;
+  for (const c of candidatas || []) {
+    const { data } = await db
+      .from('lesson_contents').select('*')
+      .eq('lesson_id', c.id).eq('lang', perfil.lang).is('tool_id', null).maybeSingle();
+    if (data) { prox = c; cont = data; break; }
   }
 
-  const { data: cont } = await db
-    .from('lesson_contents').select('*')
-    .eq('lesson_id', prox.id).eq('lang', perfil.lang).is('tool_id', null).single();
-
-  if (!cont) return pintar(error('La lección existe pero no tiene contenido cargado todavía.'));
+  if (!cont) {
+    return pintar(
+      el('h1', { text: 'Por hoy está' }),
+      el('p', { class: 'bajada', text: 'No hay nada nuevo para vos en este momento. Cuando aparezca algo que valga tu tiempo, te va a estar esperando acá.' })
+    );
+  }
 
   pintar(
     el('p', { class: 'paso', text: 'Hoy' }),

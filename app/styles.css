@@ -70,6 +70,9 @@ header {
   z-index: 10;
 }
 
+/* display:flex le gana a [hidden] si no se dice esto */
+header[hidden] { display: none; }
+
 .marca { font-weight: 650; letter-spacing: -0.01em; }
 .racha { margin-left: auto; color: var(--texto-2); font-size: 15px; }
 

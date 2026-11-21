@@ -55,7 +55,12 @@ Abrí el editor SQL:
 https://supabase.com/dashboard/project/lboyidbtjxjkhwupysks/sql/new
 
 1. Pegá todo el contenido de `db/001_schema.sql` y apretá **Run**
-2. Abrí una pestaña nueva de SQL, pegá `db/002_seed.sql` y **Run**
+2. Después `db/002_seed.sql` y **Run**
+3. Después `db/003_grants.sql` y **Run**
+
+El tercero no es opcional: la seguridad por fila decide qué filas ve cada
+uno, pero Postgres primero exige permiso sobre la tabla. Sin esos grants la
+app falla con `permission denied for table profiles`.
 
 Tiene que decir *Success*. Si tira error, mandámelo y lo corrijo.
 
