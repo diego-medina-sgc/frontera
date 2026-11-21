@@ -1,0 +1,16 @@
+# Secretos: nunca al repo
+.env
+.env.*
+!.env.example
+*.key
+service-role*
+
+# Datos personales derivados de exports (nunca se versionan)
+/private/
+/exports/
+*.export.json
+
+# Sistema
+node_modules/
+.DS_Store
+Thumbs.db
