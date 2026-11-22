@@ -421,6 +421,10 @@ button {
 }
 
 button:active { transform: scale(.985); }
+
+/* Un unico idioma servible no es una eleccion: es un dato. */
+button[disabled] { opacity: .75; cursor: default; }
+button[disabled]:active { transform: none; }
 @media (hover: hover) and (pointer: fine) { button:hover { border-color: var(--texto-3); } }
 
 /* La acción principal es el verde de la referencia. Es el único verde
@@ -946,9 +950,41 @@ body:has(#version-nueva:not([hidden])) .volviste {
 }
 
 /* ---------- biblioteca ---------- */
-.libro { display: block; width: 100%; text-align: left; padding: 18px 20px; }
+/* La tarjeta del libro: el texto a la izquierda y la tapa chica a la
+   derecha. La tapa es reconocimiento, no decoracion: se entra a la
+   biblioteca buscando un libro que ya se tiene en la cabeza. */
+.libro {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
+  text-align: left;
+  padding: 18px 20px;
+}
+
+.libro-texto { flex: 1; min-width: 0; }
+
 .libro .titulo { font-weight: 600; display: block; font-size: 17px; }
-.libro .autor { color: var(--texto-2); font-size: 14px; }
+.libro .autor { color: var(--texto-2); font-size: 14px; display: block; }
+
+/* El titulo original, solo cuando arriba se muestra el traducido. */
+.libro .original {
+  display: block;
+  color: var(--texto-3);
+  font-size: 13px;
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.tapa {
+  flex: none;
+  width: 54px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--texto) 7%, var(--tarjeta));
+  box-shadow: 0 1px 4px rgba(0,0,0,.18);
+}
 
 .libro .marca-leido {
   display: inline-block;

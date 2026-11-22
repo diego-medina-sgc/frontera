@@ -24,6 +24,9 @@ let herramientas = [];
 // Las herramientas que la persona declaró usar. Definen qué capa de
 // ejecución se le muestra al pie de cada lección.
 let misHerramientas = [];
+// Las que dijo que le gustaría aprender. Se le muestra la capa de
+// ejecución de esas también, marcada como lo que es.
+let quieroHerramientas = [];
 
 // ------------------------------------------------------------
 // Utilidades de DOM (nada de innerHTML con texto de la base)
@@ -243,7 +246,12 @@ function pintarBarraDelSistema(color) {
   metasTema.forEach((m, i) => m.setAttribute('content', color ?? temaOriginal[i]));
 }
 
-function aplicarTemaLectura() {
+// Antes el fondo valía sólo mientras leías y afuera la app volvía al
+// modo del sistema. Era una decisión defendible —el sepia es una
+// condición de lectura, no una identidad— pero en la práctica
+// confunde: elegís sepia en Ajustes, salís, y no cambió nada. Ahora
+// vale en toda la app, como el color.
+function aplicarTema() {
   const tema = prefs.leer('tema', 'sistema');
   if (tema === 'sistema') {
     document.documentElement.removeAttribute('data-tema');
@@ -254,13 +262,9 @@ function aplicarTemaLectura() {
   }
 }
 
-function quitarTemaLectura() {
-  document.documentElement.removeAttribute('data-tema');
-  pintarBarraDelSistema(null);
-}
-
 aplicarTamano();
 aplicarAcento();
+aplicarTema();
 
 const pieLector = document.getElementById('lector-pie');
 const btnVolver = document.getElementById('lector-volver');
@@ -273,7 +277,6 @@ let limpiarLector = null;
 function salirDelLector() {
   if (limpiarLector) { limpiarLector(); limpiarLector = null; }
   document.body.classList.remove('leyendo', 'mostrar-barra');
-  quitarTemaLectura();
   if (pieLector) pieLector.hidden = true;
   if (barraProgreso) { barraProgreso.hidden = true; barraProgreso.style.width = '0'; }
   document.querySelectorAll('.ajustes').forEach(p => p.remove());
@@ -308,7 +311,7 @@ function panelAjustes(ganchos = {}) {
           ev.currentTarget.setAttribute('aria-pressed', 'true');
           prefs.guardar(clave, valor);
           aplicarTamano();
-          aplicarTemaLectura();
+          aplicarTema();
           ganchos.despues?.(marca);
         }
       }));
@@ -377,7 +380,6 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
 
   // ---- comportamiento de lectura ----
   document.body.classList.add('leyendo', 'mostrar-barra');
-  aplicarTemaLectura();
 
   const ajustes = panelAjustes({ antes: bloqueVisible, despues: irAlBloque });
   document.body.append(ajustes);
@@ -628,8 +630,12 @@ async function arrancar() {
   herramientas = tools || [];
 
   const { data: mias } = await db
-    .from('profile_tools').select('tool_id').eq('profile_id', perfil.id).eq('relation', 'usa');
-  misHerramientas = (mias || []).map(r => r.tool_id);
+    .from('profile_tools').select('tool_id, relation').eq('profile_id', perfil.id).in('relation', ['usa', 'quiere']);
+  misHerramientas = (mias || []).filter(r => r.relation === 'usa').map(r => r.tool_id);
+  // La pantalla del Paso 1 promete, textual: "de estas te voy a traer
+  // contenido, aunque hoy no las uses". Hasta ahora no lo cumplía
+  // nadie: `quiere` se guardaba y no lo leía ni una línea.
+  quieroHerramientas = (mias || []).filter(r => r.relation === 'quiere').map(r => r.tool_id);
 
   await dibujarRacha();
 
@@ -694,8 +700,41 @@ function cabecera() {
 // No hay una quinta pestaña: con cuatro destinos la barra de abajo da
 // blancos de 97px y con cinco empieza a tocarse el vecino. Ajustes se
 // entra desde Hoy, que es la pantalla que se abre todos los días.
-function vistaPerfil() {
+const NOMBRE_IDIOMA = { es: 'Español', en: 'English' };
+
+// Qué idiomas tienen contenido de verdad. Ofrecer uno que no lo tiene
+// deja la cuenta sin una sola lección, que es lo que pasaba al elegir
+// inglés en el onboarding.
+async function idiomasServibles() {
+  const { data } = await db.from('lesson_contents').select('lang').is('tool_id', null);
+  const hay = [...new Set((data || []).map(r => r.lang))];
+  return hay.length ? hay : ['es'];
+}
+
+function filaIdioma(idiomas) {
+  const fila = el('div', { class: 'ajustes-fila', role: 'group', 'aria-label': 'Idioma' });
+
+  for (const lang of idiomas) {
+    fila.append(el('button', {
+      text: NOMBRE_IDIOMA[lang] || lang,
+      'aria-pressed': String(lang === perfil.lang),
+      disabled: idiomas.length < 2 ? 'true' : null,
+      onclick: async (ev) => {
+        [...fila.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
+        ev.currentTarget.setAttribute('aria-pressed', 'true');
+        const { error: e } = await db.from('profiles').update({ lang }).eq('id', perfil.id);
+        if (!e) perfil.lang = lang;
+      }
+    }));
+  }
+
+  return el('div', { class: 'ajustes ajustes-suelto' }, [fila]);
+}
+
+async function vistaPerfil() {
   marcarNav('ajustes');
+
+  const idiomas = await idiomasServibles();
 
   const nombre = el('div', { class: 'color-nombre', text: acentoActual().nombre });
   const colores = el('div', { class: 'colores', role: 'group', 'aria-label': 'Color de la app' });
@@ -731,7 +770,15 @@ function vistaPerfil() {
     el('div', { class: 'grupo' }, [
       el('p', { class: 'etiqueta', text: 'Lectura' }),
       panelAjustes({ enLinea: true }),
-      el('p', { class: 'ayuda', text: 'El fondo vale mientras leés: afuera la app sigue el modo del sistema. Acá lo ves aplicado para que elijas mirándolo.' })
+      el('p', { class: 'ayuda', text: 'El tamaño vale para los textos largos. El fondo, para toda la app.' })
+    ]),
+
+    el('div', { class: 'grupo' }, [
+      el('p', { class: 'etiqueta', text: 'Idioma' }),
+      filaIdioma(idiomas),
+      idiomas.length < 2
+        ? el('p', { class: 'ayuda', text: 'Por ahora todo el contenido está en español. Cuando haya en otro idioma, va a aparecer acá.' })
+        : null
     ]),
 
     el('div', { class: 'grupo' }, [
@@ -741,9 +788,6 @@ function vistaPerfil() {
     ])
   );
 
-  // Acá sí se previsualiza el fondo de lectura: elegir sepia sin ver
-  // nada cambiar es elegir a ciegas.
-  aplicarTemaLectura();
 }
 
 // La semana como una fila de días, no como un número en una esquina.
@@ -1195,7 +1239,13 @@ async function guardarPerfil(texto) {
     level: nivel,
     level_source: fuente,
     level_updated_at: new Date().toISOString(),
-    lang: respuestas.idioma === 'en' ? 'en' : 'es'
+    // El idioma de la app NO sale de esta pregunta. La pregunta es
+    // sobre cómo querés que te escriba tu herramienta de IA, y sirve
+    // para el texto de instrucciones. Usarla para `lang` hacía que
+    // elegir "Inglés" dejara la cuenta sin una sola lección —no hay
+    // contenido en inglés— y sin forma de volver atrás.
+    // El idioma de la app se elige en Ajustes.
+    lang: 'es'
   }).eq('id', perfil.id);
 
   perfil.level = nivel;
@@ -1618,7 +1668,7 @@ async function vistaHoy() {
   // Ruteo: solo lecciones dentro del nivel de la persona, en orden del
   // track, y que no haya contestado todavía.
   const { data: hechas, error: eHechas } = await db
-    .from('lesson_state').select('lesson_id').eq('profile_id', perfil.id).not('answered_at', 'is', null);
+    .from('lesson_state').select('lesson_id, interes').eq('profile_id', perfil.id).not('answered_at', 'is', null);
 
   // Si esta consulta falla y seguimos, pasan dos cosas feas: te vuelve
   // a servir algo que ya contestaste, que rompe la promesa central, o
@@ -1627,6 +1677,28 @@ async function vistaHoy() {
   if (eHechas) return pintarFalla();
 
   const ya = (hechas || []).map(r => r.lesson_id);
+
+  // El pulgar. Estaba escrito en el esquema desde el primer día —"9 con
+  // pulgar abajo deja de traer el tema"— y no existía en el código: se
+  // guardaba y no lo leía nadie.
+  //
+  // Con dieciocho lecciones, nueve es un número de otra app. Tres
+  // pulgares abajo netos apagan el tema, y basta con un pulgar arriba
+  // para que vuelva a contar: no bloquea nada, rutea.
+  //
+  // Y sólo apaga radar y frontera. El track es el piso: si alguien
+  // pulgarea abajo los fundamentos, el problema no es el tema.
+  const apagados = new Set();
+  if (ya.length) {
+    const { data: deTema } = await db.from('lessons').select('id, topic_id').in('id', ya);
+    const saldo = {};
+    for (const l of deTema || []) {
+      if (!l.topic_id) continue;
+      const voto = (hechas.find(h => h.lesson_id === l.id) || {}).interes;
+      if (voto) saldo[l.topic_id] = (saldo[l.topic_id] || 0) + voto;
+    }
+    for (const [tema, n] of Object.entries(saldo)) if (n <= -3) apagados.add(Number(tema));
+  }
 
   // El radar va primero y lo más nuevo arriba: si el mundo produjo algo
   // que te sirve, eso gana sobre seguir el track. El track es el piso,
@@ -1647,7 +1719,7 @@ async function vistaHoy() {
     ['fundamento', 'track_order', true]
   ]) {
     let q = db.from('lessons')
-      .select('id, slug, kind, track_order, created_at')
+      .select('id, slug, kind, topic_id, track_order, created_at')
       .eq('kind', kind)
       .eq('published', true)
       .lte('level_floor', perfil.level)
@@ -1670,6 +1742,9 @@ async function vistaHoy() {
     // Una lección sin contenido escrito todavía no es un error: simplemente
     // no existe para la persona. Se pasa a la siguiente que sí lo tenga.
     for (const c of candidatas || []) {
+      // El tema apagado por el pulgar no se trae, salvo en el track.
+      if (kind !== 'fundamento' && c.topic_id && apagados.has(c.topic_id)) continue;
+
       const { data } = await db
         .from('lesson_contents').select('*')
         .eq('lesson_id', c.id).eq('lang', perfil.lang).is('tool_id', null).maybeSingle();
@@ -1730,12 +1805,19 @@ async function vistaLeccion(lessonId, cont, repasoId = null) {
   // La capa de ejecución: lo mismo explicado para la herramienta que la
   // persona usa. Si usa dos, ve las dos. Si no declaró ninguna, no ve
   // ninguna y la lección conceptual se sostiene sola.
+  // Las que usa y, detrás, las que dijo que le gustaría aprender.
+  const pedidas = [...misHerramientas, ...quieroHerramientas];
   let capas = [];
-  if (misHerramientas.length) {
+  if (pedidas.length) {
     const { data } = await db
       .from('lesson_contents').select('*')
-      .eq('lesson_id', lessonId).eq('lang', perfil.lang).in('tool_id', misHerramientas);
-    capas = data || [];
+      .eq('lesson_id', lessonId).eq('lang', perfil.lang).in('tool_id', pedidas);
+
+    // Primero las que usa de verdad: lo que puede hacer hoy va antes
+    // que lo que podría hacer algún día.
+    capas = (data || []).sort((a, b) =>
+      Number(quieroHerramientas.includes(a.tool_id)) - Number(quieroHerramientas.includes(b.tool_id))
+    );
   }
 
   const guardar = async (status, v = {}) => {
@@ -1795,7 +1877,13 @@ async function vistaLeccion(lessonId, cont, repasoId = null) {
 
   const ejecucion = el('div');
   for (const c of capas) {
-    const t = el('div', { class: 'tarjeta' }, [el('h2', { text: c.title })]);
+    const futura = quieroHerramientas.includes(c.tool_id);
+    const t = el('div', { class: 'tarjeta' }, [
+      // Marcada, porque no es lo mismo "así lo hacés" que "así lo
+      // harías el día que la uses".
+      futura ? el('p', { class: 'paso', text: 'Para cuando la uses' }) : null,
+      el('h2', { text: c.title })
+    ]);
     const a = el('article');
     a.append(markdown(c.body_md));
     t.append(a);
@@ -1851,6 +1939,28 @@ const ESTADOS = {
   fresco:      { t: 'Lo leí y lo tengo fresco',   d: 'Nada de resumen: aplicación y discusión' }
 };
 
+// El título en el idioma de la persona. Tres de los ocho libros no
+// tienen edición en español que se haya podido verificar, y a esos no
+// se les inventa una traducción: alguien que después busca el libro
+// con ese nombre no lo encuentra.
+function tituloLibro(libro) {
+  return (perfil?.lang === 'es' && libro.title_es) ? libro.title_es : libro.title;
+}
+
+// La tapa sale del catálogo público de Open Library. Si no carga —sin
+// conexión, o el catálogo caído— la tarjeta se dibuja igual: el alt
+// vacío y el display:none del onerror la sacan sin dejar hueco.
+function tapaLibro(libro) {
+  if (!libro.cover_id) return null;
+  return el('img', {
+    class: 'tapa',
+    src: `https://covers.openlibrary.org/b/id/${libro.cover_id}-M.jpg`,
+    alt: '',
+    loading: 'lazy',
+    onerror: (ev) => { ev.currentTarget.style.display = 'none'; }
+  });
+}
+
 async function vistaBiblioteca() {
   const { data: libros } = await db.from('books').select('*').order('title');
   const { data: estados } = await db.from('book_state').select('*').eq('profile_id', perfil.id);
@@ -1863,19 +1973,27 @@ async function vistaBiblioteca() {
 
   for (const libro of libros || []) {
     const est = porLibro[libro.id];
-    const tarjeta = el('button', { class: 'tarjeta libro', onclick: () => abrirLibro(libro) }, [
-      el('span', { class: 'titulo', text: libro.title }),
-      el('span', { class: 'autor', text: libro.author + (libro.year ? ` · ${libro.year}` : '') })
+    const mostrado = tituloLibro(libro);
+
+    const texto = el('span', { class: 'libro-texto' }, [
+      el('span', { class: 'titulo', text: mostrado }),
+      el('span', { class: 'autor', text: libro.author + (libro.year ? ` · ${libro.year}` : '') }),
+      // El título original, solo cuando se está mostrando el traducido.
+      mostrado !== libro.title ? el('span', { class: 'original', text: libro.title }) : null
     ]);
 
     if (libro.themes?.length) {
       const temas = el('span', { class: 'temas' });
       for (const t of libro.themes) temas.append(el('span', { class: 'tema', text: t }));
-      tarjeta.append(temas);
+      texto.append(temas);
     }
 
-    if (est) tarjeta.append(el('span', { class: 'marca-leido', text: ESTADOS[est.read_state].t }));
-    nodos.push(tarjeta);
+    if (est) texto.append(el('span', { class: 'marca-leido', text: ESTADOS[est.read_state].t }));
+
+    nodos.push(el('button', { class: 'tarjeta libro', onclick: () => abrirLibro(libro) }, [
+      texto,
+      tapaLibro(libro)
+    ]));
   }
 
   pintar(...nodos);
@@ -1894,7 +2012,7 @@ async function abrirLibro(libro) {
 function vistaEstadoLibro(libro, cambiando = false) {
   const nodos = [
     el('p', { class: 'paso', text: libro.author }),
-    el('h1', { text: libro.title }),
+    el('h1', { text: tituloLibro(libro) }),
     el('p', { class: 'bajada', text: cambiando ? '¿Cambió tu situación con este libro?' : 'Antes de empezar: ¿lo leíste?' })
   ];
 
@@ -1932,7 +2050,7 @@ async function vistaLibro(libro, estado) {
 
   const nodos = [
     el('p', { class: 'paso', text: libro.author }),
-    el('h1', { text: libro.title })
+    el('h1', { text: tituloLibro(libro) })
   ];
 
   if (!piezas?.length) {
@@ -1962,7 +2080,7 @@ async function vistaLibro(libro, estado) {
 function vistaPieza(libro, piezas, pieza, estado) {
   lector({
     volver: () => vistaLibro(libro, estado),
-    epigrafe: libro.title,
+    epigrafe: tituloLibro(libro),
     titulo: pieza.title,
     cuerpoMd: pieza.body_md,
     clave: 'pieza.' + pieza.id,
