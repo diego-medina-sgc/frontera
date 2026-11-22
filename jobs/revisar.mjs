@@ -173,6 +173,71 @@ for (const s of estadoLibros) {
 }
 
 // ------------------------------------------------------------
+// Los que faltaban
+// ------------------------------------------------------------
+// Salieron de dos auditorías. Cada uno caza algo que ya estaba
+// pasando y que ningún control miraba.
+
+// 14. La app se vacía a cierto nivel. Es el control que hubiera
+//     avisado que para un nivel 3 había ocho lecciones alcanzables y
+//     después "por hoy está" para siempre.
+for (let nivel = 0; nivel <= 4; nivel++) {
+  const alcanzables = lessons.filter(l =>
+    l.published &&
+    l.level_floor <= nivel &&
+    // El track ignora el techo a propósito: ver vistaHoy.
+    (l.kind === 'fundamento' || l.level_ceiling >= nivel) &&
+    contenidos.some(c => c.lesson_id === l.id && c.lang === 'es' && !c.tool_id)
+  ).length;
+
+  if (alcanzables === 0) falla('Nivel sin una sola lección servible', `nivel ${nivel}`);
+  else if (alcanzables < 5) aviso('Nivel con poco material', `nivel ${nivel}: ${alcanzables} lecciones`);
+}
+
+// 15. Repasos acumulados. La app promete que nada se acumula; una cola
+//     de repasos vencidos es exactamente una deuda con contador.
+const hoyISO = new Date().toISOString().slice(0, 10);
+for (const p of perfiles) {
+  const vencidos = repasos.filter(r => r.profile_id === p.id && !r.done_at && r.due_on <= hoyISO);
+  if (vencidos.length > 8) falla('Repasos acumulados', `${vencidos.length} vencidos le tapan Hoy a un perfil`);
+
+  const zombis = vencidos.filter(r => (Date.now() - new Date(r.due_on).getTime()) / 864e5 > 30);
+  if (zombis.length) aviso('Repasos zombi', `${zombis.length} con más de 30 días vencidos`);
+}
+
+// 16. Una lección contestada que no agendó ningún repaso: el upsert de
+//     reviews falló en silencio y el motor quedó apagado para esa
+//     lección sin que nadie se entere.
+for (const e of estados.filter(x => x.status === 'hecha' && x.answered_at)) {
+  const tiene = repasos.some(r => r.profile_id === e.profile_id && r.lesson_id === e.lesson_id);
+  if (!tiene) falla('Lección hecha sin repasos agendados', `lección ${e.lesson_id}`);
+}
+
+// 17. Sintaxis que el renderizador de la app no sabe dibujar. No es
+//     cosmético: la persona ve los caracteres crudos. Las itálicas y
+//     las listas numeradas ya están soportadas; esto vigila el resto,
+//     que es lo que va a traer la próxima lección generada.
+const SIN_SOPORTE = [
+  [/```/, 'bloque de código'],
+  [/^\s*\|/m, 'tabla'],
+  [/\]\(https?:/, 'link'],
+  [/^\s*>/m, 'cita'],
+  [/^\s*#{4,}\s/m, 'título de nivel 4 o más']
+];
+
+for (const c of contenidos) {
+  for (const [re, que] of SIN_SOPORTE) {
+    if (re.test(c.body_md || '')) falla('Sintaxis que la app muestra en crudo', `${c.title}: ${que}`);
+  }
+}
+
+for (const pz of piezas) {
+  for (const [re, que] of SIN_SOPORTE) {
+    if (re.test(pz.body_md || '')) falla('Sintaxis que la app muestra en crudo', `${pz.title}: ${que}`);
+  }
+}
+
+// ------------------------------------------------------------
 // Informe
 // ------------------------------------------------------------
 console.log(`Frontera · controles\n`);

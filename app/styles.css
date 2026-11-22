@@ -344,7 +344,7 @@ h1 {
 h2 { font-size: 20px; line-height: 1.3; letter-spacing: -0.015em; margin: 32px 0 10px; font-weight: 600; }
 h3 { font-size: 17px; margin: 24px 0 8px; font-weight: 600; }
 p { margin: 0 0 16px; }
-ul { margin: 0 0 16px; padding-left: 22px; }
+ul, ol { margin: 0 0 16px; padding-left: 22px; }
 li { margin-bottom: 8px; }
 strong { font-weight: 700; }
 
@@ -569,6 +569,18 @@ article h3 {
 }
 
 article li { margin-bottom: .55em; }
+article ol { padding-left: 1.4em; }
+article em { font-style: italic; }
+
+/* El compromiso: una linea, no un campo de notas. Si parece grande,
+   se contesta como un formulario. */
+.compromiso {
+  min-height: 62px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.cierre-paso .ayuda { margin: 10px 0 0; }
 
 /* Un solo copete. Antes había dos pegados, y el de arriba era más
    chico que el cuerpo que presentaba. */

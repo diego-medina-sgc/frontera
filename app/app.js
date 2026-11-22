@@ -54,31 +54,50 @@ function markdown(texto) {
   const cont = document.createDocumentFragment();
   let lista = null;
 
-  const negritas = (linea, destino) => {
-    const partes = linea.split(/\*\*(.+?)\*\*/g);
-    partes.forEach((p, i) => {
-      if (!p) return;
-      destino.append(i % 2 ? el('strong', { text: p }) : document.createTextNode(p));
+  let tipoLista = null;
+
+  // **negrita** primero y, dentro de lo que no quedó en negrita,
+  // *itálica*. Sin la itálica, siete pasajes del contenido ya
+  // publicado mostraban los asteriscos crudos: títulos de libros,
+  // énfasis, y el "(*Saved info*)" de la lección 1, que es de las
+  // primeras pantallas que ve cualquiera.
+  const enriquecer = (linea, destino) => {
+    linea.split(/\*\*(.+?)\*\*/g).forEach((parte, i) => {
+      if (!parte) return;
+      if (i % 2) { destino.append(el('strong', { text: parte })); return; }
+      parte.split(/\*([^*\n]+?)\*/g).forEach((p, j) => {
+        if (!p) return;
+        destino.append(j % 2 ? el('em', { text: p }) : document.createTextNode(p));
+      });
     });
   };
 
   for (const linea of texto.split('\n')) {
     const t = linea.trim();
 
-    if (t.startsWith('- ')) {
-      if (!lista) { lista = el('ul'); cont.append(lista); }
+    // Listas con guion y listas numeradas. Las numeradas salían como
+    // párrafos sueltos con el "1." adentro.
+    const numerada = t.match(/^(\d+)\.\s+(.*)$/);
+    if (t.startsWith('- ') || numerada) {
+      const tipo = numerada ? 'ol' : 'ul';
+      if (!lista || tipoLista !== tipo) {
+        lista = el(tipo);
+        tipoLista = tipo;
+        cont.append(lista);
+      }
       const li = el('li');
-      negritas(t.slice(2), li);
+      enriquecer(numerada ? numerada[2] : t.slice(2), li);
       lista.append(li);
       continue;
     }
     lista = null;
+    tipoLista = null;
 
     if (!t) continue;
     if (t.startsWith('### ')) { cont.append(el('h3', { text: t.slice(4) })); continue; }
     if (t.startsWith('## '))  { cont.append(el('h2', { text: t.slice(3) })); continue; }
     const p = el('p');
-    negritas(t, p);
+    enriquecer(t, p);
     cont.append(p);
   }
   return cont;
@@ -540,6 +559,18 @@ function cierre({ antes, pasos, accion, salidas, apretado }) {
         el('span', { text: p.izq }),
         el('span', { text: p.der })
       ]));
+    } else if (p.tipo === 'texto') {
+      // No bloquea: arranca contestado en vacío, así el botón de
+      // cerrar aparece igual y se lee como lo que es, opcional.
+      valores[p.campo] = '';
+      const caja = el('textarea', {
+        class: 'compromiso',
+        rows: '2',
+        placeholder: p.ejemplo || '',
+        oninput: (ev) => { valores[p.campo] = ev.currentTarget.value; }
+      });
+      nodo.append(pregunta, caja);
+      if (p.ayuda) nodo.append(el('p', { class: 'ayuda', text: p.ayuda }));
     } else {
       const grupo = el('div', { class: 'pulgares', role: 'group', 'aria-label': p.pregunta });
       for (const [valor, texto] of p.opciones) {
@@ -753,6 +784,63 @@ async function filaDeLaSemana() {
     el('div', { class: 'semana-texto', text: cuantos === 0 ? 'Esta semana' : `${cuantos} ${cuantos === 1 ? 'día' : 'días'} esta semana` }),
     fila
   ]);
+}
+
+// ============================================================
+// El nivel se mueve
+// ============================================================
+// Hasta acá el nivel se fijaba una vez en el Paso 1 y después solo lo
+// tocaba jobs/evidencia.mjs, que corre en una sola máquina contra un
+// solo perfil. Para todos los demás era una constante de por vida, y
+// como el ruteo filtra por nivel, quien entraba en 1 no iba a ver
+// nunca una lección de frontera ni del radar. La app tenía diez
+// lecciones de largo y después "por hoy está" para siempre.
+//
+// Esto lo mueve con lo que pasa adentro de la app. Deliberadamente
+// conservador: sube, nunca baja, y pide evidencia repetida.
+//
+// "Ya lo sabía" y "entendí todo" son la misma señal dicha de dos
+// maneras distintas: esto que me estás dando me queda abajo.
+const ASCENSO = { contestadas: 5, señales: 3 };
+
+let ascendio = false;
+
+async function revisarAscenso() {
+  if (perfil.level >= 4) return;
+
+  const { data: estados } = await db
+    .from('lesson_state')
+    .select('lesson_id, status, comprension')
+    .eq('profile_id', perfil.id)
+    .not('answered_at', 'is', null);
+
+  if (!estados || estados.length < ASCENSO.contestadas) return;
+
+  const { data: ls } = await db
+    .from('lessons').select('id, level_floor')
+    .in('id', estados.map(e => e.lesson_id));
+  const piso = Object.fromEntries((ls || []).map(l => [l.id, l.level_floor]));
+
+  // Solo cuenta lo que estaba a tu altura o más arriba. Terminar diez
+  // lecciones de nivel 0 no dice nada sobre si estás listo para el 3.
+  const aNivel = estados.filter(e => (piso[e.lesson_id] ?? 0) >= perfil.level);
+  if (aNivel.length < ASCENSO.contestadas) return;
+
+  const señales = aNivel.filter(
+    e => e.status === 'ya_la_sabia' || (e.comprension ?? 0) >= 8
+  ).length;
+  if (señales < ASCENSO.señales) return;
+
+  const nuevo = perfil.level + 1;
+  const { error: e } = await db.from('profiles').update({
+    level: nuevo,
+    level_source: 'desempeno',
+    level_updated_at: new Date().toISOString()
+  }).eq('id', perfil.id);
+
+  if (e) return;
+  perfil.level = nuevo;
+  ascendio = true;
 }
 
 async function marcarActividad(kind) {
@@ -1323,15 +1411,41 @@ function vistaPrueba() {
 // ============================================================
 async function repasoPendiente() {
   const hoy = new Date().toISOString().slice(0, 10);
+  const caduca = haceDias(DIAS_PARA_CADUCAR);
   const { data } = await db
     .from('reviews')
     .select('id, stage, lesson_id, due_on')
     .eq('profile_id', perfil.id)
     .is('done_at', null)
     .lte('due_on', hoy)
+    .gte('due_on', caduca)
     .order('due_on')
     .limit(1);
   return (data || [])[0] || null;
+}
+
+// La app promete que nada se acumula y que no hay deuda. La cola de
+// repasos era exactamente una deuda: te ibas diez días con ocho
+// lecciones hechas y volvías con veinticuatro repasos, obligatorios y
+// de a uno por pantalla antes de poder ver lo de hoy.
+//
+// Un repaso que lleva más de dos semanas vencido ya no mide memoria,
+// mide ausencia. Se cierra solo y se marca caducado para que no
+// ensucie la medición de si la app enseña algo.
+const DIAS_PARA_CADUCAR = 14;
+
+function haceDias(n) {
+  const f = new Date();
+  f.setDate(f.getDate() - n);
+  return f.toISOString().slice(0, 10);
+}
+
+async function caducarRepasosViejos() {
+  await db.from('reviews')
+    .update({ done_at: new Date().toISOString(), caducado: true })
+    .eq('profile_id', perfil.id)
+    .is('done_at', null)
+    .lt('due_on', haceDias(DIAS_PARA_CADUCAR));
 }
 
 async function vistaRepaso(repaso) {
@@ -1401,13 +1515,99 @@ async function vistaRepaso(repaso) {
       apretado: true,
       accion: { texto: 'Listo', onclick: (v) => guardar(v) },
       salidas: [
-        { texto: 'Volver a leerlo', onclick: () => vistaLeccion(repaso.lesson_id, cont) }
+        // Se le pasa el repaso: si termina la lección, ese repaso
+        // queda cerrado. Sin esto, volver a leerla y apretar Listo
+        // reagendaba todo y devolvía el mismo repaso, en loop.
+        { texto: 'Volver a leerlo', onclick: () => vistaLeccion(repaso.lesson_id, cont, repaso.id) }
+      ]
+    })
+  );
+}
+
+// Cuando algo falla de verdad hay que decirlo. El estado de error y el
+// de "no hay nada nuevo hoy" eran el mismo píxel, y eso es peor que un
+// error: es la app afirmando algo sobre el mundo que no sabe.
+function pintarFalla() {
+  pintar(
+    cabecera(),
+    el('p', { class: 'paso', text: 'No pude traer lo de hoy' }),
+    el('h1', { text: 'Algo falló de este lado' }),
+    el('p', { class: 'bajada', text: 'No es que no haya nada: no pude llegar a la base. Probá de nuevo en un momento.' }),
+    el('button', { class: 'primario', text: 'Reintentar', onclick: () => vistaHoy() })
+  );
+}
+
+// ============================================================
+// El compromiso
+// ============================================================
+// Cada lección termina con una consigna concreta —"elegí la cosa tuya
+// que más usa otra gente y pegá diez casos en una planilla"— y la app
+// no sabía que esa consigna existía. Esto es lo que convierte leer en
+// hacer: lo que escribiste ayer te lo pregunta hoy.
+//
+// Es, además, la única señal de toda la app sobre algo que pasó afuera
+// de la app.
+async function compromisoPendiente() {
+  const ayer = haceDias(1) + 'T23:59:59Z';
+  const { data } = await db
+    .from('lesson_state')
+    .select('lesson_id, compromiso, compromiso_at')
+    .eq('profile_id', perfil.id)
+    .not('compromiso', 'is', null)
+    .is('compromiso_hecho', null)
+    .lte('compromiso_at', ayer)
+    .order('compromiso_at')
+    .limit(1);
+  return (data || [])[0] || null;
+}
+
+async function vistaCompromiso(c) {
+  const { data: cont } = await db
+    .from('lesson_contents').select('title')
+    .eq('lesson_id', c.lesson_id).eq('lang', perfil.lang).is('tool_id', null).maybeSingle();
+
+  const responder = async (hecho) => {
+    await db.from('lesson_state')
+      .update({ compromiso_hecho: hecho })
+      .eq('profile_id', perfil.id).eq('lesson_id', c.lesson_id);
+    if (hecho) await marcarActividad('compromiso');
+    vistaHoy();
+  };
+
+  const dias = Math.max(1, Math.round((Date.now() - new Date(c.compromiso_at).getTime()) / 864e5));
+
+  pintar(
+    cabecera(),
+    el('p', { class: 'paso', text: dias === 1 ? 'Ayer dijiste' : `Hace ${dias} días dijiste` }),
+    el('h1', { text: c.compromiso }),
+    cont ? el('p', { class: 'bajada', text: `Salió de "${cont.title}".` }) : null,
+
+    cierre({
+      apretado: true,
+      pasos: [{
+        tipo: 'opciones',
+        campo: 'hecho',
+        pregunta: '¿Lo hiciste?',
+        opciones: [[true, 'Sí'], [false, 'Todavía no']]
+      }],
+      accion: { texto: 'Listo', onclick: (v) => responder(v.hecho === true) },
+      salidas: [
+        // Sin esta salida, un compromiso que ya no tiene sentido te
+        // bloquea la pantalla de hoy para siempre.
+        { texto: 'Ya no va', onclick: () => responder(false) }
       ]
     })
   );
 }
 
 async function vistaHoy() {
+  // Lo que dijiste que ibas a hacer va antes que todo: es lo único de
+  // la app que te pregunta por algo que pasó afuera.
+  const pendiente = await compromisoPendiente();
+  if (pendiente) return vistaCompromiso(pendiente);
+
+  await caducarRepasosViejos();
+
   // El repaso va primero: son veinte segundos y es lo que evita que todo
   // lo anterior se borre. Después sigue lo nuevo.
   const repaso = await repasoPendiente();
@@ -1417,8 +1617,15 @@ async function vistaHoy() {
 
   // Ruteo: solo lecciones dentro del nivel de la persona, en orden del
   // track, y que no haya contestado todavía.
-  const { data: hechas } = await db
+  const { data: hechas, error: eHechas } = await db
     .from('lesson_state').select('lesson_id').eq('profile_id', perfil.id).not('answered_at', 'is', null);
+
+  // Si esta consulta falla y seguimos, pasan dos cosas feas: te vuelve
+  // a servir algo que ya contestaste, que rompe la promesa central, o
+  // te muestra "por hoy está" como si fuera una decisión editorial.
+  // Un error de red no puede disfrazarse de afirmación sobre el mundo.
+  if (eHechas) return pintarFalla();
+
   const ya = (hechas || []).map(r => r.lesson_id);
 
   // El radar va primero y lo más nuevo arriba: si el mundo produjo algo
@@ -1444,13 +1651,21 @@ async function vistaHoy() {
       .eq('kind', kind)
       .eq('published', true)
       .lte('level_floor', perfil.level)
-      .gte('level_ceiling', perfil.level)
       .order(columna, { ascending: asc });
+
+    // El techo solo vale para lo perecedero y para la frontera. En el
+    // track no: las lecciones del track tienen techo 1 o 2, así que al
+    // subir de nivel a mitad de camino desaparecían para siempre, sin
+    // haberlas leído y sin forma de volver a verlas. Mejor que te caiga
+    // una que te queda abajo —y la saques con un toque en "ya lo
+    // sabía"— que un agujero que no se cierra nunca.
+    if (kind !== 'fundamento') q = q.gte('level_ceiling', perfil.level);
 
     if (kind === 'radar') q = q.gte('created_at', vence);
     if (ya.length) q = q.not('id', 'in', `(${ya.join(',')})`);
 
-    const { data: candidatas } = await q;
+    const { data: candidatas, error: eCand } = await q;
+    if (eCand) return pintarFalla();
 
     // Una lección sin contenido escrito todavía no es un error: simplemente
     // no existe para la persona. Se pasa a la siguiente que sí lo tenga.
@@ -1479,9 +1694,18 @@ async function vistaHoy() {
     );
   }
 
+  // El nivel no se dice nunca como número —es interno— pero que se
+  // haya movido tiene que notarse, porque si nada cambia por lo que
+  // hacés, la app es una biblioteca.
+  const avisoAscenso = ascendio
+    ? el('p', { class: 'aviso', text: 'Se abrió material nuevo: lo que venías contestando dice que lo de antes te quedaba corto.' })
+    : null;
+  ascendio = false;
+
   pintar(
     cabecera(),
     semana,
+    avisoAscenso,
     el('p', { class: 'paso', text: { radar: 'Salió esto', frontera: 'Frontera' }[prox.kind] || 'Hoy' }),
     el('h1', { text: cont.title }),
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
@@ -1500,7 +1724,9 @@ async function vistaHoy() {
 // ============================================================
 // Lección + los dos clics
 // ============================================================
-async function vistaLeccion(lessonId, cont) {
+// `repasoId` llega cuando se entró desde un repaso: al terminar la
+// lección ese repaso queda cerrado.
+async function vistaLeccion(lessonId, cont, repasoId = null) {
   // La capa de ejecución: lo mismo explicado para la herramienta que la
   // persona usa. Si usa dos, ve las dos. Si no declaró ninguna, no ve
   // ninguna y la lección conceptual se sostiene sola.
@@ -1519,6 +1745,9 @@ async function vistaLeccion(lessonId, cont) {
       status,
       comprension: v.comprension ?? null,
       interes: v.interes ?? null,
+      compromiso: (v.compromiso || '').trim() || null,
+      compromiso_at: (v.compromiso || '').trim() ? new Date().toISOString() : null,
+      compromiso_hecho: null,
       answered_at: new Date().toISOString()
     }, { onConflict: 'profile_id,lesson_id' });
 
@@ -1533,11 +1762,34 @@ async function vistaLeccion(lessonId, cont) {
       await db.from('reviews').upsert(dias.map((d, i) => {
         const f = new Date();
         f.setDate(f.getDate() + d);
-        return { profile_id: perfil.id, lesson_id: lessonId, stage: i, due_on: f.toISOString().slice(0, 10) };
+        return {
+          profile_id: perfil.id, lesson_id: lessonId, stage: i,
+          due_on: f.toISOString().slice(0, 10),
+          // Sin esto, una lección cuyos tres repasos ya se consumieron
+          // no se podía volver a armar nunca: el upsert pisaba la
+          // fecha pero dejaba el done_at viejo.
+          done_at: null, caducado: false, recordaba: null, uso: null
+        };
       }), { onConflict: 'profile_id,lesson_id,stage' });
+    } else if (status === 'ya_la_sabia') {
+      // Si decís que ya lo sabías, lo que estaba agendado deja de
+      // tener sentido. Sin esto la app generaba sola el estado que sus
+      // propios controles marcan como falla: repasos vivos sobre algo
+      // declarado sabido.
+      await db.from('reviews')
+        .update({ done_at: new Date().toISOString(), caducado: true })
+        .eq('profile_id', perfil.id).eq('lesson_id', lessonId).is('done_at', null);
+    }
+
+    // El repaso del que se vino, si se vino de uno.
+    if (repasoId) {
+      await db.from('reviews')
+        .update({ done_at: new Date().toISOString(), caducado: true })
+        .eq('id', repasoId).is('done_at', null);
     }
 
     await marcarActividad('leccion');
+    await revisarAscenso();
     vistaHoy();
   };
 
@@ -1561,7 +1813,17 @@ async function vistaLeccion(lessonId, cont) {
     cierre: cierre({
       pasos: [
         { tipo: 'escala', campo: 'comprension', pregunta: '¿Cuánto entendiste?', izq: 'Nada', der: 'Todo' },
-        { tipo: 'opciones', campo: 'interes', pregunta: '¿Te interesó?', opciones: [[1, '👍 Sí'], [-1, '👎 No']] }
+        { tipo: 'opciones', campo: 'interes', pregunta: '¿Te interesó?', opciones: [[1, '👍 Sí'], [-1, '👎 No']] },
+        // Cada lección termina con una consigna concreta y hasta ahora
+        // la app no sabía que existía. Esto es lo que convierte leer
+        // en hacer: mañana te lo va a preguntar.
+        {
+          tipo: 'texto',
+          campo: 'compromiso',
+          pregunta: '¿Qué vas a hacer con esto?',
+          ejemplo: 'Una cosa concreta, de esta semana…',
+          ayuda: 'Si escribís algo, mañana te lo pregunto. Si no, no pasa nada.'
+        }
       ],
       accion: { texto: 'Listo', onclick: (v) => guardar('hecha', v) },
       salidas: [
