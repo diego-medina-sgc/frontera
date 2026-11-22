@@ -161,9 +161,14 @@ function acentoActual() {
   return ACENTOS.find(a => a.id === id) || ACENTOS[0];
 }
 
-// Vive en el navegador, igual que el tamaño y el fondo: es una
-// preferencia de este aparato. Si querés que te siga entre teléfono y
-// computadora, hay que subirla al perfil, que es una columna más.
+// A diferencia del tamaño y del fondo, el acento no es del aparato: es
+// identidad, y si lo elegiste en el teléfono esperás encontrarlo en la
+// computadora. Por eso vive en el perfil y se copia al navegador.
+//
+// El navegador igual lo guarda, y no por redundancia: aplicarAcento()
+// corre al cargar el módulo, mucho antes de que haya perfil. Sin la
+// copia local, cada arranque pintaría un segundo de lima antes de
+// ponerse del color elegido.
 function aplicarAcento() {
   const a = acentoActual();
   const raiz = document.documentElement.style;
@@ -171,6 +176,38 @@ function aplicarAcento() {
   raiz.setProperty('--sobre-acento', a.sobre);
   raiz.setProperty('--acento-texto-claro', a.claro);
   raiz.setProperty('--acento-texto-oscuro', a.oscuro);
+}
+
+const esAcento = (id) => ACENTOS.some(a => a.id === id);
+
+// Se llama apenas hay perfil. La columna es nullable a propósito: null
+// no quiere decir "eligió lima", quiere decir "todavía no eligió", y
+// esos dos casos se resuelven al revés.
+function sincronizarAcento() {
+  if (esAcento(perfil.accent)) {
+    // Gana el perfil: puede venir de otro aparato.
+    if (perfil.accent !== prefs.leer('acento', 'lima')) {
+      prefs.guardar('acento', perfil.accent);
+      aplicarAcento();
+    }
+    return;
+  }
+
+  // Nunca eligió en ningún lado. Si este navegador tiene algo de antes
+  // —de cuando el acento era solo local— se sube y queda.
+  const local = prefs.leer('acento', null);
+  if (esAcento(local)) guardarAcento(local);
+}
+
+// La elección ya está aplicada y guardada localmente antes de salir a
+// la red: si la subida falla, no se pierde nada y se reintenta al
+// entrar la próxima vez.
+function guardarAcento(id) {
+  prefs.guardar('acento', id);
+  aplicarAcento();
+  if (!perfil) return;
+  perfil.accent = id;
+  db.from('profiles').update({ accent: id }).eq('id', perfil.id).then(() => {}, () => {});
 }
 
 // El tema de lectura, en cambio, vive SOLO mientras leés. Afuera la app
@@ -539,6 +576,7 @@ async function arrancar() {
 
   if (e) return pintar(error('No pude leer tu perfil: ' + e.message));
   perfil = data;
+  sincronizarAcento();
 
   const { data: tools } = await db
     .from('tools').select('*').eq('active', true).order('sort');
@@ -629,8 +667,7 @@ function vistaPerfil() {
       onclick: (ev) => {
         [...colores.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
         ev.currentTarget.setAttribute('aria-pressed', 'true');
-        prefs.guardar('acento', a.id);
-        aplicarAcento();
+        guardarAcento(a.id);
         nombre.textContent = a.nombre;
       }
     }, [el('span', { text: '✓', 'aria-hidden': 'true' })]));
