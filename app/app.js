@@ -1969,12 +1969,20 @@ const ESTADOS = {
   fresco:      { t: 'Lo leí y lo tengo fresco',   d: 'Nada de resumen: aplicación y discusión' }
 };
 
-// El título en el idioma de la persona. Tres de los ocho libros no
-// tienen edición en español que se haya podido verificar, y a esos no
-// se les inventa una traducción: alguien que después busca el libro
-// con ese nombre no lo encuentra.
+// El título que se muestra es siempre el original.
+//
+// La primera versión mostraba el de la edición en español cuando
+// existía, y la biblioteca quedaba con cinco títulos en español y tres
+// en inglés: peor que cualquiera de las dos cosas sola. Y el español
+// no se puede completar sin inventar, porque de Grove, Horowitz y
+// Dunford no hay edición en castellano verificable: los únicos que
+// usan esos títulos traducidos son sitios de resúmenes.
+//
+// Así que el original manda —que además es el nombre con el que se
+// busca y se compra el libro— y el título en español aparece como
+// dato extra en los cinco que lo tienen.
 function tituloLibro(libro) {
-  return (perfil?.lang === 'es' && libro.title_es) ? libro.title_es : libro.title;
+  return libro.title;
 }
 
 // La tapa sale del catálogo público de Open Library. Si no carga —sin
@@ -2008,8 +2016,10 @@ async function vistaBiblioteca() {
     const texto = el('span', { class: 'libro-texto' }, [
       el('span', { class: 'titulo', text: mostrado }),
       el('span', { class: 'autor', text: libro.author + (libro.year ? ` · ${libro.year}` : '') }),
-      // El título original, solo cuando se está mostrando el traducido.
-      mostrado !== libro.title ? el('span', { class: 'original', text: libro.title }) : null
+      // El título de la edición en español, donde la haya.
+      (perfil?.lang === 'es' && libro.title_es)
+        ? el('span', { class: 'original', text: 'En español: ' + libro.title_es })
+        : null
     ]);
 
     if (libro.themes?.length) {
