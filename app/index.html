@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0e0f11" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#16171a" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="Aprender IA al ritmo en que la IA cambia.">
   <title>Frontera</title>
@@ -19,28 +19,55 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="progreso" hidden></div>
-
   <div id="version-nueva" hidden>
     <span>Hay una versión nueva</span>
     <button id="actualizar" type="button">Actualizar</button>
   </div>
 
-  <header id="barra" hidden>
-    <span class="marca">Frontera</span>
-    <nav id="nav">
-      <button id="nav-hoy" aria-current="page">Hoy</button>
-      <button id="nav-reto">Reto</button>
-      <button id="nav-mapa">Mapa</button>
-      <button id="nav-libros">Biblioteca</button>
-    </nav>
-    <span id="racha" class="racha" title="Semanas seguidas aprendiendo"></span>
-    <button id="salir" class="link">Salir</button>
-  </header>
-
   <main id="vista" aria-live="polite">
     <div class="cargando">Cargando…</div>
   </main>
+
+  <!-- La navegación va después del contenido en el DOM y fija abajo en
+       pantalla: el orden de foco y de lectores queda contenido →
+       navegación, que es el orden real de uso. -->
+  <nav id="nav" aria-label="Secciones" hidden>
+    <button id="nav-hoy" aria-current="page">
+      <svg class="ico" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <circle cx="10" cy="10" r="7.2"/><circle cx="10" cy="10" r="2.4" fill="currentColor" stroke="none"/>
+      </svg>
+      Hoy
+    </button>
+    <button id="nav-reto">
+      <svg class="ico" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 3v14"/><path d="M5 4h9l-1.6 3.4L14 11H5"/>
+      </svg>
+      Reto
+    </button>
+    <button id="nav-mapa">
+      <svg class="ico" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+        <path d="M4 16V9"/><path d="M10 16V4"/><path d="M16 16v-5"/>
+      </svg>
+      Mapa
+    </button>
+    <button id="nav-libros">
+      <svg class="ico" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.5 4.5h5a2 2 0 0 1 2 2V16a2 2 0 0 0-2-1.6h-5z"/>
+        <path d="M16.5 4.5h-4a2 2 0 0 0-2 2V16a2 2 0 0 1 2-1.6h4z"/>
+      </svg>
+      Libros
+    </button>
+  </nav>
+
+  <!-- La barra del lector ocupa el mismo lugar que la navegación cuando
+       se está leyendo. La salida nunca se esconde: antes la única forma
+       de salir de una lección era hacer scroll hasta el final. -->
+  <div id="lector-pie" hidden>
+    <div id="progreso" hidden></div>
+    <button id="lector-volver" aria-label="Volver">←</button>
+    <button id="lector-aa" class="aa" aria-expanded="false" aria-label="Tamaño y fondo">Aa</button>
+    <span id="lector-restante"></span>
+  </div>
 
   <script type="module" src="app.js"></script>
   <script>

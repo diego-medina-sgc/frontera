@@ -13,8 +13,10 @@ import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const vista = document.getElementById('vista');
-const barra = document.getElementById('barra');
-const elRacha = document.getElementById('racha');
+
+// La racha ya no vive en una esquina de arriba: se dibuja en Hoy, al
+// lado de la fila de la semana, que es el mismo dato.
+let semanasSeguidas = 0;
 
 let perfil = null;
 let herramientas = [];
@@ -102,7 +104,14 @@ function error(msg) {
 // funciona igual con los valores por defecto.
 // ============================================================
 
-const TAMANOS = { chico: 17.5, normal: 19.5, grande: 22 };
+// Interlineado y medida van en sentido inverso: la línea corta del
+// celular en tamaño grande pide menos aire, no más. Con 1,72 fijo, el
+// texto grande quedaba disperso y había que scrollear el doble.
+const TAMANOS = {
+  chico: { tam: 17.5, alto: 1.74 },
+  normal: { tam: 19.5, alto: 1.66 },
+  grande: { tam: 21, alto: 1.56 }
+};
 const PALABRAS_POR_MINUTO = 200;
 
 const prefs = {
@@ -117,25 +126,47 @@ const prefs = {
 
 // El tamaño es inofensivo fuera del lector: solo afecta al texto largo.
 function aplicarTamano() {
-  const tam = prefs.leer('tamano', 'normal');
-  document.documentElement.style.setProperty('--lectura-tam', (TAMANOS[tam] ?? TAMANOS.normal) + 'px');
+  const t = TAMANOS[prefs.leer('tamano', 'normal')] ?? TAMANOS.normal;
+  document.documentElement.style.setProperty('--lectura-tam', t.tam + 'px');
+  document.documentElement.style.setProperty('--lectura-alto', String(t.alto));
 }
 
 // El tema de lectura, en cambio, vive SOLO mientras leés. Afuera la app
 // sigue el modo del sistema, como hace Apple Books: el sepia es una
 // condición de lectura, no una identidad del producto.
+const COLOR_DE_TEMA = { claro: '#f1f1ef', sepia: '#f2ead8', oscuro: '#16171a' };
+const metasTema = [...document.querySelectorAll('meta[name="theme-color"]')];
+const temaOriginal = metasTema.map(m => m.getAttribute('content'));
+
+// Sin esto, elegir sepia u oscuro deja una franja clara arriba de la
+// pantalla: la barra de estado se queda con el color del sistema y la
+// costura es lo primero que delata que esto es una web.
+function pintarBarraDelSistema(color) {
+  metasTema.forEach((m, i) => m.setAttribute('content', color ?? temaOriginal[i]));
+}
+
 function aplicarTemaLectura() {
   const tema = prefs.leer('tema', 'sistema');
-  if (tema === 'sistema') document.documentElement.removeAttribute('data-tema');
-  else document.documentElement.setAttribute('data-tema', tema);
+  if (tema === 'sistema') {
+    document.documentElement.removeAttribute('data-tema');
+    pintarBarraDelSistema(null);
+  } else {
+    document.documentElement.setAttribute('data-tema', tema);
+    pintarBarraDelSistema(COLOR_DE_TEMA[tema]);
+  }
 }
 
 function quitarTemaLectura() {
   document.documentElement.removeAttribute('data-tema');
+  pintarBarraDelSistema(null);
 }
 
 aplicarTamano();
 
+const pieLector = document.getElementById('lector-pie');
+const btnVolver = document.getElementById('lector-volver');
+const btnAa = document.getElementById('lector-aa');
+const elRestante = document.getElementById('lector-restante');
 const barraProgreso = document.getElementById('progreso');
 let limpiarLector = null;
 
@@ -144,46 +175,58 @@ function salirDelLector() {
   if (limpiarLector) { limpiarLector(); limpiarLector = null; }
   document.body.classList.remove('leyendo', 'mostrar-barra');
   quitarTemaLectura();
+  if (pieLector) pieLector.hidden = true;
   if (barraProgreso) { barraProgreso.hidden = true; barraProgreso.style.width = '0'; }
+  document.querySelectorAll('.ajustes').forEach(p => p.remove());
 }
 
-function panelAjustes(alCambiar) {
+// `ganchos.antes` devuelve una marca de dónde estaba la persona y
+// `ganchos.despues` la usa para devolverla ahí. Sin eso, agrandar el
+// texto a mitad de lección te deja trescientos píxeles más abajo, que
+// es justo cuando querías mirar el cambio sobre lo que estabas leyendo.
+function panelAjustes(ganchos = {}) {
   const panel = el('div', { class: 'ajustes', hidden: 'true' });
 
   const fila = (etiqueta, clave, opciones, porDefecto) => {
-    const f = el('div', { class: 'ajustes-fila' }, [el('span', { text: etiqueta })]);
+    const f = el('div', { class: 'ajustes-fila' });
     const actual = prefs.leer(clave, porDefecto);
-    for (const [valor, texto] of opciones) {
+    for (const [valor, texto, clase] of opciones) {
       f.append(el('button', {
         text: texto,
+        class: clase || null,
+        // Los tres botones de tamaño dicen "A": sin esto, un lector de
+        // pantalla lee tres veces lo mismo.
+        'aria-label': `${etiqueta} ${valor}`,
         'aria-pressed': String(valor === actual),
         onclick: (ev) => {
+          const marca = ganchos.antes?.();
           [...f.querySelectorAll('button')].forEach(b => b.setAttribute('aria-pressed', 'false'));
           ev.currentTarget.setAttribute('aria-pressed', 'true');
           prefs.guardar(clave, valor);
           aplicarTamano();
           aplicarTemaLectura();
-          alCambiar?.();
+          ganchos.despues?.(marca);
         }
       }));
     }
     return f;
   };
 
-  panel.append(fila('Tamaño', 'tamano', [['chico', 'A'], ['normal', 'A'], ['grande', 'A']], 'normal'));
-  panel.append(fila('Fondo', 'tema', [['sistema', 'Auto'], ['claro', 'Claro'], ['sepia', 'Sepia'], ['oscuro', 'Oscuro']], 'sistema'));
+  panel.append(fila('Texto', 'tamano', [
+    ['chico', 'A', 'tam-chico'],
+    ['normal', 'A', 'tam-normal'],
+    ['grande', 'A', 'tam-grande']
+  ], 'normal'));
 
-  // Los tres botones de tamaño se ven del tamaño que representan.
-  const tam = panel.querySelectorAll('.ajustes-fila')[0].querySelectorAll('button');
-  tam[0].style.fontSize = '13px';
-  tam[1].style.fontSize = '16px';
-  tam[2].style.fontSize = '20px';
+  panel.append(fila('Fondo', 'tema', [
+    ['sistema', 'Auto'], ['claro', 'Claro'], ['sepia', 'Sepia'], ['oscuro', 'Oscuro']
+  ], 'sistema'));
 
   return panel;
 }
 
 // `clave` identifica la pieza para recordar dónde quedaste.
-function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave, minutos }) {
+function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave, minutos, volver }) {
   const cuerpo = el('article');
   cuerpo.append(markdown(cuerpoMd));
 
@@ -192,35 +235,33 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
   // queda mal es el producto.
   const palabras = cuerpoMd.trim().split(/\s+/).length;
   const total = minutos || Math.max(1, Math.round(palabras / PALABRAS_POR_MINUTO));
-  const restante = el('span', { class: 'restante', text: `${total} min` });
 
-  const ajustes = panelAjustes();
-  const botonAa = el('button', {
-    class: 'aa',
-    text: 'Aa',
-    'aria-expanded': 'false',
-    onclick: (ev) => {
-      const abierto = ajustes.hidden;
-      ajustes.hidden = !abierto;
-      ev.currentTarget.setAttribute('aria-expanded', String(abierto));
+  // El primer bloque visible del cuerpo. Es el ancla con la que se
+  // recuerda la posición y con la que se vuelve después de cambiar el
+  // tamaño: una fracción del scroll se rompe en cuanto el texto cambia
+  // de tamaño, de tema o de redacción.
+  const bloqueVisible = () => {
+    const hijos = cuerpo.children;
+    for (let i = 0; i < hijos.length; i++) {
+      if (hijos[i].getBoundingClientRect().bottom > 90) return i;
     }
-  });
+    return Math.max(0, hijos.length - 1);
+  };
 
-  const barra = el('div', { class: 'lector-barra' }, [
-    epigrafe ? el('span', { text: epigrafe }) : null,
-    botonAa,
-    restante
-  ]);
+  const irAlBloque = (i) => {
+    const n = cuerpo.children[Math.max(0, Math.min(i, cuerpo.children.length - 1))];
+    if (n) n.scrollIntoView({ block: 'start' });
+  };
 
   const nodos = [
-    barra,
-    ajustes,
+    epigrafe ? el('p', { class: 'paso', text: epigrafe }) : null,
     el('h1', { text: titulo }),
     bajada ? el('p', { class: 'bajada', text: bajada }) : null
   ];
 
   // Retomar: solo si quedó a más de un 8% y sin terminar.
   const guardado = parseFloat(prefs.leer('pos.' + clave, '0'));
+  const bloqueGuardado = parseInt(prefs.leer('blq.' + clave, '-1'), 10);
   let avisoRetomar = null;
   if (guardado > 0.08 && guardado < 0.92) {
     avisoRetomar = el('div', { class: 'retomar' }, [
@@ -228,8 +269,9 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
       el('button', {
         text: 'Seguir ahí',
         onclick: () => {
-          const alto = document.documentElement.scrollHeight - window.innerHeight;
-          window.scrollTo({ top: alto * guardado, behavior: 'smooth' });
+          irAlBloque(bloqueGuardado >= 0
+            ? bloqueGuardado
+            : Math.round(cuerpo.children.length * guardado));
           avisoRetomar.remove();
         }
       })
@@ -245,30 +287,78 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
   pintar(...nodos);
 
   // ---- comportamiento de lectura ----
-  document.body.classList.add('leyendo');
+  document.body.classList.add('leyendo', 'mostrar-barra');
   aplicarTemaLectura();
+
+  const ajustes = panelAjustes({ antes: bloqueVisible, despues: irAlBloque });
+  document.body.append(ajustes);
+
+  pieLector.hidden = false;
   if (barraProgreso) barraProgreso.hidden = false;
+
+  const alternarAjustes = () => {
+    const abrir = ajustes.hidden;
+    ajustes.hidden = !abrir;
+    btnAa.setAttribute('aria-expanded', String(abrir));
+  };
+
+  btnAa.setAttribute('aria-expanded', 'false');
+  btnAa.onclick = alternarAjustes;
+  btnVolver.onclick = () => (volver ? volver() : vistaHoy());
+
+  const alTeclado = (e) => { if (e.key === 'Escape' && !ajustes.hidden) alternarAjustes(); };
+
+  const alTocarFuera = (e) => {
+    if (ajustes.hidden) return;
+    if (ajustes.contains(e.target) || btnAa.contains(e.target)) return;
+    alternarAjustes();
+  };
+
+  // Tocar el texto muestra o esconde la interfaz. Es el gesto de
+  // Kindle y de Books, y no pisa la selección de texto.
+  const alTocarTexto = () => {
+    if ((window.getSelection?.()?.toString() || '').length) return;
+    document.body.classList.toggle('mostrar-barra');
+  };
+
+  document.addEventListener('keydown', alTeclado);
+  document.addEventListener('pointerdown', alTocarFuera);
+  cuerpo.addEventListener('click', alTocarTexto);
 
   let ultimo = window.scrollY;
   let guardarEn = null;
 
   const alScrollear = () => {
-    const alto = document.documentElement.scrollHeight - window.innerHeight;
+    const alto = cuerpo.offsetHeight;
     const y = window.scrollY;
-    const avance = alto > 0 ? Math.min(1, Math.max(0, y / alto)) : 0;
+
+    // El avance se mide contra la prosa, no contra la página: con la
+    // página, el formulario de cierre cuenta como texto por leer y los
+    // minutos que faltan mienten siempre para abajo.
+    const avance = alto > 0
+      ? Math.min(1, Math.max(0, (y + window.innerHeight - cuerpo.offsetTop) / alto))
+      : 0;
 
     if (barraProgreso) barraProgreso.style.width = (avance * 100) + '%';
 
     const faltan = Math.round(total * (1 - avance));
-    restante.textContent = avance > 0.97 ? 'Listo' : `Faltan ${Math.max(1, faltan)} min`;
+    if (elRestante) {
+      elRestante.textContent = avance > 0.99 ? 'Listo' : `Faltan ${Math.max(1, faltan)} min`;
+    }
 
-    // La barra vuelve al subir o al llegar arriba de todo.
-    if (y < 60 || y < ultimo - 8) document.body.classList.add('mostrar-barra');
-    else if (y > ultimo + 8) document.body.classList.remove('mostrar-barra');
+    // Umbrales asimétricos: mostrar la barra pide un gesto deliberado
+    // hacia arriba y esconderla es fácil, que es lo que se quiere en un
+    // lector. Con 8px para los dos lados, el rebote de iOS la hacía
+    // aparecer y desaparecer sola.
+    if (y <= 0 || avance > 0.95 || y < ultimo - 28) document.body.classList.add('mostrar-barra');
+    else if (y > ultimo + 14 && y > 80) document.body.classList.remove('mostrar-barra');
     ultimo = y;
 
     clearTimeout(guardarEn);
-    guardarEn = setTimeout(() => prefs.guardar('pos.' + clave, String(avance)), 400);
+    guardarEn = setTimeout(() => {
+      prefs.guardar('pos.' + clave, String(avance));
+      prefs.guardar('blq.' + clave, String(bloqueVisible()));
+    }, 400);
   };
 
   window.addEventListener('scroll', alScrollear, { passive: true });
@@ -276,8 +366,109 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
 
   limpiarLector = () => {
     window.removeEventListener('scroll', alScrollear);
+    document.removeEventListener('keydown', alTeclado);
+    document.removeEventListener('pointerdown', alTocarFuera);
+    cuerpo.removeEventListener('click', alTocarTexto);
+    btnAa.onclick = null;
+    btnVolver.onclick = null;
     clearTimeout(guardarEn);
   };
+}
+
+// ============================================================
+// El cierre
+// ============================================================
+// Las dos preguntas que sostienen el motor entero: cuánto entendiste y
+// si te interesó. Están separadas a propósito —entender y querer no son
+// lo mismo— y ninguna bloquea nada: sirven para enrutar, no para
+// aprobar.
+//
+// Aparecen de a una. Antes estaban las tres juntas y ocupaban una
+// pantalla entera, que es la forma más rápida de que alguien conteste
+// cualquier cosa para salir del paso. Las salidas, en cambio, están
+// desde el principio: nadie queda encerrado por no querer responder.
+// ============================================================
+function cierre({ antes, pasos, accion, salidas, apretado }) {
+  const valores = {};
+  const caja = el('div', { class: apretado ? 'cierre apretado' : 'cierre' });
+  if (antes) caja.append(antes);
+
+  const respondido = (campo) => valores[campo] !== undefined && valores[campo] !== null;
+
+  const nodosPaso = [];
+  const nodoAccion = el('div', { class: 'cierre-paso', hidden: 'true' }, [
+    el('button', { class: 'primario', text: accion.texto, onclick: () => accion.onclick(valores) })
+  ]);
+
+  const mostrar = (n) => {
+    if (!n.hidden) return;
+    n.hidden = false;
+    n.classList.add('aparece');
+  };
+
+  const revisar = () => {
+    for (let i = 1; i < nodosPaso.length; i++) {
+      if (respondido(pasos[i - 1].campo)) mostrar(nodosPaso[i]);
+    }
+    if (pasos.every(p => respondido(p.campo))) mostrar(nodoAccion);
+  };
+
+  const elegir = (grupo, nodoBoton, campo, valor) => {
+    [...grupo.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
+    nodoBoton.setAttribute('aria-pressed', 'true');
+    valores[campo] = valor;
+    revisar();
+  };
+
+  pasos.forEach((p, i) => {
+    const nodo = el('div', { class: 'cierre-paso', hidden: i === 0 ? null : 'true' });
+    nodosPaso.push(nodo);
+
+    const pregunta = el('p', { class: 'pregunta', text: p.pregunta });
+
+    if (p.tipo === 'escala') {
+      // Una sola línea: diez segmentos dentro de un riel, no diez
+      // botones sueltos en dos filas.
+      const riel = el('div', { class: 'escala', role: 'group', 'aria-label': p.pregunta });
+      for (let n = 1; n <= 10; n++) {
+        riel.append(el('button', {
+          text: String(n),
+          'aria-pressed': 'false',
+          onclick: (ev) => elegir(riel, ev.currentTarget, p.campo, n)
+        }));
+      }
+      nodo.append(pregunta, riel, el('div', { class: 'escala-pies' }, [
+        el('span', { text: p.izq }),
+        el('span', { text: p.der })
+      ]));
+    } else {
+      const grupo = el('div', { class: 'pulgares', role: 'group', 'aria-label': p.pregunta });
+      for (const [valor, texto] of p.opciones) {
+        grupo.append(el('button', {
+          text: texto,
+          'aria-pressed': 'false',
+          onclick: (ev) => elegir(grupo, ev.currentTarget, p.campo, valor)
+        }));
+      }
+      // Dos opciones entran en la misma línea que la pregunta. Tres, no.
+      nodo.classList.add(p.opciones.length <= 2 ? 'cierre-fila' : 'apilado');
+      nodo.append(pregunta, grupo);
+    }
+
+    caja.append(nodo);
+  });
+
+  caja.append(nodoAccion);
+
+  if (salidas && salidas.length) {
+    const fila = el('div', { class: 'salidas' });
+    for (const s of salidas) {
+      fila.append(el('button', { text: s.texto, onclick: () => s.onclick(valores) }));
+    }
+    caja.append(fila);
+  }
+
+  return caja;
 }
 
 // ============================================================
@@ -308,7 +499,6 @@ async function arrancar() {
     .from('profile_tools').select('tool_id').eq('profile_id', perfil.id).eq('relation', 'usa');
   misHerramientas = (mias || []).map(r => r.tool_id);
 
-  barra.hidden = false;
   await dibujarRacha();
 
   // Durante el Paso 1 la navegación no existe: con ella a la vista, un
@@ -320,10 +510,10 @@ async function arrancar() {
   return vistaHoy();
 }
 
-document.getElementById('salir').addEventListener('click', async () => {
+async function salir() {
   await db.auth.signOut();
   location.reload();
-});
+}
 
 const navegacion = document.getElementById('nav');
 const navHoy = document.getElementById('nav-hoy');
@@ -344,8 +534,23 @@ navLibros.addEventListener('click', () => { marcarNav('libros'); vistaBiblioteca
 
 async function dibujarRacha() {
   const { data } = await db.rpc('racha_semanal', { p_profile: perfil.id });
-  const n = data ?? 0;
-  elRacha.textContent = n > 0 ? `${n} ${n === 1 ? 'semana' : 'semanas'}` : '';
+  semanasSeguidas = data ?? 0;
+}
+
+// Lo único que quedó del encabezado de arriba: la marca y la racha, en
+// la pantalla donde se las mira y no en la esquina a la que el pulgar
+// no llega.
+function cabecera() {
+  return el('div', { class: 'cabecera' }, [
+    el('span', { class: 'marca', text: 'Frontera' }),
+    semanasSeguidas > 0
+      ? el('span', {
+          class: 'racha',
+          title: 'Semanas seguidas aprendiendo',
+          text: `${semanasSeguidas} ${semanasSeguidas === 1 ? 'semana' : 'semanas'}`
+        })
+      : null
+  ]);
 }
 
 // La semana como una fila de días, no como un número en una esquina.
@@ -401,7 +606,7 @@ async function marcarActividad(kind) {
 // Entrar
 // ============================================================
 function vistaEntrar() {
-  barra.hidden = true;
+  navegacion.hidden = true;
   const mail = el('input', { type: 'email', id: 'mail', autocomplete: 'email', placeholder: 'tu@mail.com' });
   const clave = el('input', { type: 'password', id: 'clave', autocomplete: 'current-password', placeholder: 'Tu contraseña' });
   const msj = el('div');
@@ -978,35 +1183,16 @@ async function vistaRepaso(repaso) {
     return vistaHoy();
   }
 
-  const marca = { recordaba: null, uso: null };
-
-  const grupo = (opciones, campo) => {
-    const caja = el('div', { class: 'pulgares' });
-    for (const [valor, texto] of opciones) {
-      caja.append(el('button', {
-        text: texto,
-        'aria-pressed': 'false',
-        'data-v': valor === true || valor === 2 ? '1' : '-1',
-        onclick: (ev) => {
-          [...caja.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
-          ev.currentTarget.setAttribute('aria-pressed', 'true');
-          marca[campo] = valor;
-        }
-      }));
-    }
-    return caja;
-  };
-
-  const guardar = async () => {
+  const guardar = async (v = {}) => {
     await db.from('reviews').update({
       done_at: new Date().toISOString(),
-      recordaba: marca.recordaba,
-      uso: marca.uso
+      recordaba: v.recordaba ?? null,
+      uso: v.uso ?? null
     }).eq('id', repaso.id);
 
     // Si no se acordaba, vuelve antes. Si lo usó de verdad, no hace falta
     // insistir: se salta el resto de la escalera.
-    if (marca.recordaba === 0) {
+    if (v.recordaba === 0) {
       const f = new Date();
       f.setDate(f.getDate() + 2);
       await db.from('reviews').upsert({
@@ -1015,7 +1201,7 @@ async function vistaRepaso(repaso) {
         stage: repaso.stage + 10,
         due_on: f.toISOString().slice(0, 10)
       }, { onConflict: 'profile_id,lesson_id,stage' });
-    } else if (marca.uso === true) {
+    } else if (v.uso === true) {
       await db.from('reviews')
         .update({ done_at: new Date().toISOString() })
         .eq('profile_id', perfil.id).eq('lesson_id', repaso.lesson_id).is('done_at', null);
@@ -1033,20 +1219,29 @@ async function vistaRepaso(repaso) {
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
     el('p', { class: 'ayuda', text: dias > 0 ? `Lo viste hace unos días` : 'Lo viste hace poco' }),
 
-    el('div', { class: 'cierre', style: 'margin-top:28px' }, [
-      el('label', { text: '¿Te acordabas?' }),
-      grupo([[2, 'Sí'], [1, 'Más o menos'], [0, 'No']], 'recordaba'),
-      el('div', { style: 'height:24px' }),
-      el('label', { text: '¿Lo usaste en algo real?' }),
-      grupo([[true, 'Sí'], [false, 'Todavía no']], 'uso'),
-      el('button', { class: 'primario', text: 'Listo', onclick: guardar }),
-      el('div', { class: 'secundarias' }, [
-        el('button', {
-          text: 'Volver a leerlo',
-          onclick: () => vistaLeccion(repaso.lesson_id, cont)
-        })
-      ])
-    ])
+    cierre({
+      pasos: [
+        {
+          tipo: 'opciones',
+          campo: 'recordaba',
+          pregunta: '¿Te acordabas?',
+          opciones: [[2, 'Sí'], [1, 'Más o menos'], [0, 'No']]
+        },
+        {
+          tipo: 'opciones',
+          campo: 'uso',
+          pregunta: '¿Lo usaste en algo real?',
+          opciones: [[true, 'Sí'], [false, 'Todavía no']]
+        }
+      ],
+      // El repaso es una pantalla corta: acá el cierre no viene después
+      // de diez minutos de lectura, viene enseguida.
+      apretado: true,
+      accion: { texto: 'Listo', onclick: (v) => guardar(v) },
+      salidas: [
+        { texto: 'Volver a leerlo', onclick: () => vistaLeccion(repaso.lesson_id, cont) }
+      ]
+    })
   );
 }
 
@@ -1110,6 +1305,7 @@ async function vistaHoy() {
     // El mundo no produce algo que valga la pena todos los días. Para eso
     // está la biblioteca: lo que no caduca, cuando la frontera está quieta.
     return pintar(
+      cabecera(),
       semana,
       el('h1', { text: 'Por hoy está' }),
       el('p', { class: 'bajada', text: 'No hay nada nuevo que valga tus minutos. No quedó nada pendiente: lo que no apareció hoy, no te lo debés.' }),
@@ -1122,6 +1318,7 @@ async function vistaHoy() {
   }
 
   pintar(
+    cabecera(),
     semana,
     el('p', { class: 'paso', text: { radar: 'Salió esto', frontera: 'Frontera' }[prox.kind] || 'Hoy' }),
     el('h1', { text: cont.title }),
@@ -1142,8 +1339,6 @@ async function vistaHoy() {
 // Lección + los dos clics
 // ============================================================
 async function vistaLeccion(lessonId, cont) {
-  const estado = { comprension: null, interes: null };
-
   // La capa de ejecución: lo mismo explicado para la herramienta que la
   // persona usa. Si usa dos, ve las dos. Si no declaró ninguna, no ve
   // ninguna y la lección conceptual se sostiene sola.
@@ -1155,40 +1350,13 @@ async function vistaLeccion(lessonId, cont) {
     capas = data || [];
   }
 
-  const escala = el('div', { class: 'escala' });
-  for (let n = 1; n <= 10; n++) {
-    escala.append(el('button', {
-      text: String(n),
-      'aria-pressed': 'false',
-      onclick: (ev) => {
-        [...escala.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
-        ev.currentTarget.setAttribute('aria-pressed', 'true');
-        estado.comprension = n;
-      }
-    }));
-  }
-
-  const pulgares = el('div', { class: 'pulgares' });
-  for (const [v, t] of [['1', '👍 Me interesa'], ['-1', '👎 No es para mí']]) {
-    pulgares.append(el('button', {
-      'data-v': v,
-      text: t,
-      'aria-pressed': 'false',
-      onclick: (ev) => {
-        [...pulgares.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
-        ev.currentTarget.setAttribute('aria-pressed', 'true');
-        estado.interes = parseInt(v, 10);
-      }
-    }));
-  }
-
-  const guardar = async (status) => {
+  const guardar = async (status, v = {}) => {
     await db.from('lesson_state').upsert({
       profile_id: perfil.id,
       lesson_id: lessonId,
       status,
-      comprension: estado.comprension,
-      interes: estado.interes,
+      comprension: v.comprension ?? null,
+      interes: v.interes ?? null,
       answered_at: new Date().toISOString()
     }, { onConflict: 'profile_id,lesson_id' });
 
@@ -1199,7 +1367,7 @@ async function vistaLeccion(lessonId, cont) {
     // una persona avanzada que saltea media docena de lecciones le
     // caerían veinte repasos de cosas que ya domina, y ahí la perdés.
     if (status === 'hecha') {
-      const dias = (estado.comprension ?? 10) <= 6 ? [2, 7, 21] : [3, 10, 30];
+      const dias = (v.comprension ?? 10) <= 6 ? [2, 7, 21] : [3, 10, 30];
       await db.from('reviews').upsert(dias.map((d, i) => {
         const f = new Date();
         f.setDate(f.getDate() + d);
@@ -1228,21 +1396,17 @@ async function vistaLeccion(lessonId, cont) {
     clave: 'leccion.' + lessonId,
     minutos: cont.minutes,
     extras: capas.length ? ejecucion : null,
-    cierre: el('div', { class: 'cierre' }, [
-      el('label', { text: 'Del 1 al 10, ¿cuánto entendiste?' }),
-      escala,
-      el('div', { class: 'escala-pies' }, [
-        el('span', { text: 'Nada' }),
-        el('span', { text: 'Todo' })
-      ]),
-      el('label', { text: '¿Te interesó el tema?' }),
-      pulgares,
-      el('button', { class: 'primario', text: 'Listo', onclick: () => guardar('hecha') }),
-      el('div', { class: 'secundarias' }, [
-        el('button', { text: 'Esto ya lo sabía', onclick: () => guardar('ya_la_sabia') }),
-        el('button', { text: 'Dejarlo para después', onclick: vistaHoy })
-      ])
-    ])
+    cierre: cierre({
+      pasos: [
+        { tipo: 'escala', campo: 'comprension', pregunta: '¿Cuánto entendiste?', izq: 'Nada', der: 'Todo' },
+        { tipo: 'opciones', campo: 'interes', pregunta: '¿Te interesó?', opciones: [[1, '👍 Sí'], [-1, '👎 No']] }
+      ],
+      accion: { texto: 'Listo', onclick: (v) => guardar('hecha', v) },
+      salidas: [
+        { texto: 'Ya lo sabía', onclick: (v) => guardar('ya_la_sabia', v) },
+        { texto: 'Dejarlo para después', onclick: () => vistaHoy() }
+      ]
+    })
   });
 }
 
@@ -1354,7 +1518,7 @@ async function vistaLibro(libro, estado) {
   }
 
   const listas = piezas.filter(p => ya.has(p.id)).length;
-  nodos.push(el('p', { class: 'progreso', text: `${ESTADOS[estado].t} · ${listas} de ${piezas.length} leídas` }));
+  nodos.push(el('p', { class: 'avance', text: `${ESTADOS[estado].t} · ${listas} de ${piezas.length} leídas` }));
 
   for (const p of piezas) {
     nodos.push(el('button', {
@@ -1372,70 +1536,37 @@ async function vistaLibro(libro, estado) {
 }
 
 function vistaPieza(libro, piezas, pieza, estado) {
-  const marca = { comprension: null, interes: null };
-
-  const escala = el('div', { class: 'escala' });
-  for (let n = 1; n <= 10; n++) {
-    escala.append(el('button', {
-      text: String(n),
-      'aria-pressed': 'false',
-      onclick: (ev) => {
-        [...escala.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
-        ev.currentTarget.setAttribute('aria-pressed', 'true');
-        marca.comprension = n;
-      }
-    }));
-  }
-
-  const pulgares = el('div', { class: 'pulgares' });
-  for (const [v, t] of [['1', '👍 Me interesa'], ['-1', '👎 No es para mí']]) {
-    pulgares.append(el('button', {
-      'data-v': v,
-      text: t,
-      'aria-pressed': 'false',
-      onclick: (ev) => {
-        [...pulgares.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
-        ev.currentTarget.setAttribute('aria-pressed', 'true');
-        marca.interes = parseInt(v, 10);
-      }
-    }));
-  }
-
   lector({
+    volver: () => vistaLibro(libro, estado),
     epigrafe: libro.title,
     titulo: pieza.title,
     cuerpoMd: pieza.body_md,
     clave: 'pieza.' + pieza.id,
     minutos: pieza.minutes,
     pie: el('p', { class: 'fuente', text: `Las ideas son de ${libro.author}. El texto es una síntesis propia, no un extracto del libro.` }),
-    cierre: el('div', { class: 'cierre' }, [
-      el('label', { text: 'Del 1 al 10, ¿cuánto entendiste?' }),
-      escala,
-      el('div', { class: 'escala-pies' }, [
-        el('span', { text: 'Nada' }),
-        el('span', { text: 'Todo' })
-      ]),
-      el('label', { text: '¿Te interesó?' }),
-      pulgares,
-      el('button', {
-        class: 'primario',
-        text: 'Listo',
-        onclick: async () => {
+    cierre: cierre({
+      pasos: [
+        { tipo: 'escala', campo: 'comprension', pregunta: '¿Cuánto entendiste?', izq: 'Nada', der: 'Todo' },
+        { tipo: 'opciones', campo: 'interes', pregunta: '¿Te interesó?', opciones: [[1, '👍 Sí'], [-1, '👎 No']] }
+      ],
+      accion: {
+        texto: 'Listo',
+        onclick: async (v) => {
           await db.from('book_piece_state').upsert({
             profile_id: perfil.id,
             piece_id: pieza.id,
-            comprension: marca.comprension,
-            interes: marca.interes,
+            comprension: v.comprension ?? null,
+            interes: v.interes ?? null,
             answered_at: new Date().toISOString()
           }, { onConflict: 'profile_id,piece_id' });
           await marcarActividad('libro');
           vistaLibro(libro, estado);
         }
-      }),
-      el('div', { class: 'secundarias' }, [
-        el('button', { text: 'Volver al libro', onclick: () => vistaLibro(libro, estado) })
-      ])
-    ])
+      },
+      salidas: [
+        { texto: 'Volver al libro', onclick: () => vistaLibro(libro, estado) }
+      ]
+    })
   });
 }
 
@@ -1469,38 +1600,13 @@ async function vistaReto(reto) {
     reto.status = 'haciendo';
   }
 
-  const marca = { dificultad: null, sirvio: null };
   const notas = el('textarea', { id: 'notas', placeholder: 'Qué te salió, qué no, qué aprendiste…' });
 
-  const escala = el('div', { class: 'escala' });
-  for (let n = 1; n <= 10; n++) {
-    escala.append(el('button', {
-      text: String(n), 'aria-pressed': 'false',
-      onclick: (ev) => {
-        [...escala.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
-        ev.currentTarget.setAttribute('aria-pressed', 'true');
-        marca.dificultad = n;
-      }
-    }));
-  }
-
-  const pulgares = el('div', { class: 'pulgares' });
-  for (const [v, t] of [['1', '👍 Sirvió'], ['-1', '👎 No sirvió']]) {
-    pulgares.append(el('button', {
-      'data-v': v, text: t, 'aria-pressed': 'false',
-      onclick: (ev) => {
-        [...pulgares.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
-        ev.currentTarget.setAttribute('aria-pressed', 'true');
-        marca.sirvio = parseInt(v, 10);
-      }
-    }));
-  }
-
-  const cerrar = async (status) => {
+  const cerrar = async (status, v = {}) => {
     await db.from('challenges').update({
       status,
-      dificultad: marca.dificultad,
-      sirvio: marca.sirvio,
+      dificultad: v.dificultad ?? null,
+      sirvio: v.sirvio ?? null,
       notas: notas.value.trim() || null,
       answered_at: new Date().toISOString()
     }).eq('id', reto.id);
@@ -1518,24 +1624,21 @@ async function vistaReto(reto) {
     el('p', { class: 'ayuda', text: `${reto.minutes} minutos` }),
     cuerpo,
     reto.porque ? el('p', { class: 'fuente', text: `Por qué este: ${reto.porque}` }) : null,
-    el('div', { class: 'cierre' }, [
-      el('label', { for: 'notas', text: '¿Cómo te fue?' }),
-      notas,
-      el('div', { style: 'height:20px' }),
-      el('label', { text: 'Del 1 al 10, ¿cuánto te costó?' }),
-      escala,
-      el('div', { class: 'escala-pies' }, [
-        el('span', { text: 'Fácil' }),
-        el('span', { text: 'Durísimo' })
+    cierre({
+      antes: el('div', { class: 'cierre-paso' }, [
+        el('label', { class: 'pregunta', for: 'notas', text: '¿Cómo te fue?' }),
+        notas
       ]),
-      el('label', { text: '¿Te sirvió?' }),
-      pulgares,
-      el('button', { class: 'primario', text: 'Lo hice', onclick: () => cerrar('hecho') }),
-      el('div', { class: 'secundarias' }, [
-        el('button', { text: 'Seguir después', onclick: () => { marcarNav('hoy'); vistaHoy(); } }),
-        el('button', { text: 'No es para mí', onclick: () => cerrar('descartado') })
-      ])
-    ])
+      pasos: [
+        { tipo: 'escala', campo: 'dificultad', pregunta: '¿Cuánto te costó?', izq: 'Fácil', der: 'Durísimo' },
+        { tipo: 'opciones', campo: 'sirvio', pregunta: '¿Te sirvió?', opciones: [[1, '👍 Sí'], [-1, '👎 No']] }
+      ],
+      accion: { texto: 'Lo hice', onclick: (v) => cerrar('hecho', v) },
+      salidas: [
+        { texto: 'Seguir después', onclick: () => { marcarNav('hoy'); vistaHoy(); } },
+        { texto: 'No es para mí', onclick: (v) => cerrar('descartado', v) }
+      ]
+    })
   );
 }
 
@@ -1648,6 +1751,13 @@ async function vistaMapa() {
   }
 
   nodos.push(el('p', { class: 'fuente', text: 'Un nodo apagado no significa que no sepas: significa que la app todavía no tiene evidencia de que te muevas ahí. La barra sale de lo que hacés; el número verde, de lo que el campo movió este tiempo.' }));
+
+  // Salir vivía arriba a la derecha, el peor píxel del teléfono, con el
+  // mismo peso visual que las cuatro secciones, y es una acción de
+  // frecuencia mensual. El mapa es la pantalla "vos": va acá abajo.
+  nodos.push(el('div', { class: 'pie-mapa' }, [
+    el('button', { class: 'link', text: 'Salir de la cuenta', onclick: salir })
+  ]));
 
   pintar(...nodos);
 }

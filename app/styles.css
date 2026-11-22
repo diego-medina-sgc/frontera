@@ -5,14 +5,17 @@
 
    · Las pantallas de navegación (hoy, mapa, biblioteca) toman el
      lenguaje de los buenos dashboards: lienzo gris claro, tarjetas
-     blancas, bordes muy redondeados, píldoras negras, un único acento
-     usado con avaricia, etiquetas técnicas en monoespaciada.
+     blancas, bordes muy redondeados, etiquetas técnicas en
+     monoespaciada, y un verde que aparece solo donde algo es tuyo.
 
    · La pantalla de lectura toma el lenguaje de los buenos lectores de
      libros: se calla, desaparece, y deja el texto solo. Nada de
      densidad de dashboard donde hay que leer diez minutos.
 
    Mezclarlas sería el error. Son dos modos del mismo producto.
+
+   Regla del verde: el verde es la persona. El negro es tinta. Verde
+   en lo que hiciste o vas a hacer; nunca dentro del texto que leés.
    ============================================================ */
 
 :root {
@@ -20,14 +23,23 @@
   --tarjeta: #ffffff;
   --texto: #15161a;
   --texto-2: #6b6f76;
-  --texto-3: #9aa0a6;
+  /* Antes era #9aa0a6: 2,3:1 sobre el lienzo, o sea ilegible al sol.
+     Es el color de las etiquetas, que son medio producto. */
+  --texto-3: #676d74;
   --borde: #e5e5e1;
   --negro: #15161a;
   --sobre-negro: #ffffff;
 
-  /* Un solo acento, y se usa poco: solo para "esto te toca a vos" */
+  /* El verde de la referencia. Se usa como relleno: lo que es tuyo
+     o lo que te toca hacer. */
   --lima: #d7f24b;
-  --sobre-lima: #1a1c10;
+  --lima-viva: #cbe93a;
+  --sobre-lima: #17190c;
+
+  /* El mismo verde en versión texto, para donde la lima no contrasta */
+  --marca: #4d6b16;
+  --marca-suave: #f2f7dc;
+  --marca-borde: #e0ebb8;
 
   --ok: #1f9d55;
   --no: #d1453b;
@@ -35,6 +47,7 @@
   --radio: 18px;
   --radio-chico: 12px;
   --ancho: 680px;
+  --barra-alto: 56px;
 
   --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
@@ -42,48 +55,61 @@
 
   /* Lo controla el lector */
   --lectura-tam: 19.5px;
-  --lectura-alto: 1.72;
+  --lectura-alto: 1.66;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema="claro"]):not([data-tema="sepia"]) {
-    --fondo: #0e0f11;
-    --tarjeta: #17181b;
-    --texto: #e9eaec;
+    --fondo: #16171a;
+    --tarjeta: #1f2024;
+    /* Blanco casi puro sobre negro casi puro florece con serif fina.
+       12:1 sigue muy arriba de AAA y cansa mucho menos. */
+    --texto: #d8dade;
     --texto-2: #9aa0a8;
-    --texto-3: #6d737a;
-    --borde: #26282c;
-    --negro: #e9eaec;
-    --sobre-negro: #15161a;
+    --texto-3: #868d95;
+    --borde: #2c2e33;
+    --negro: #d8dade;
+    --sobre-negro: #16171a;
+    --marca: #b9d94a;
+    --marca-suave: #1e2412;
+    --marca-borde: #333d1c;
     --ok: #3fbd82;
     --no: #e2795f;
   }
 }
 
 :root[data-tema="oscuro"] {
-  --fondo: #0e0f11;
-  --tarjeta: #17181b;
-  --texto: #e9eaec;
+  --fondo: #16171a;
+  --tarjeta: #1f2024;
+  --texto: #d8dade;
   --texto-2: #9aa0a8;
-  --texto-3: #6d737a;
-  --borde: #26282c;
-  --negro: #e9eaec;
-  --sobre-negro: #15161a;
+  --texto-3: #868d95;
+  --borde: #2c2e33;
+  --negro: #d8dade;
+  --sobre-negro: #16171a;
+  --marca: #b9d94a;
+  --marca-suave: #1e2412;
+  --marca-borde: #333d1c;
   --ok: #3fbd82;
   --no: #e2795f;
 }
 
 /* Sepia: la firma de los lectores buenos. No es un capricho: baja el
-   contraste del blanco puro, que a los veinte minutos cansa. */
+   contraste del blanco puro, que a los veinte minutos cansa.
+   El papel va más claro que la tarjeta porque el texto largo vive
+   sobre el papel, no sobre la tarjeta. */
 :root[data-tema="sepia"] {
-  --fondo: #e8e0cf;
-  --tarjeta: #f6f0e2;
+  --fondo: #f2ead8;
+  --tarjeta: #faf4e6;
   --texto: #3b3226;
   --texto-2: #6f6450;
-  --texto-3: #8e846f;
-  --borde: #ddd2bb;
+  --texto-3: #6b6049;
+  --borde: #d3c5a8;
   --negro: #3b3226;
-  --sobre-negro: #f6f0e2;
+  --sobre-negro: #faf4e6;
+  --marca: #55631f;
+  --marca-suave: #e1e7c0;
+  --marca-borde: #c3cf96;
 }
 
 * { box-sizing: border-box; }
@@ -94,6 +120,7 @@ html {
   /* El destello gris al tocar es la señal más fuerte de "esto es una
      página web y no una app" */
   -webkit-tap-highlight-color: transparent;
+  scrollbar-gutter: stable;
 }
 
 /* Que tirar hacia abajo no dispare el recargar del navegador ni el
@@ -117,59 +144,115 @@ button, a, [role="button"], .chip, .dia {
   -webkit-touch-callout: none;
 }
 
-/* ---------- barra ---------- */
-header {
+/* ============================================================
+   NAVEGACIÓN — abajo
+   ============================================================
+   Arriba era el peor lugar posible: en un teléfono el pulgar no llega
+   sin cambiar el agarre, y el encabezado se comía el 11% de la
+   pantalla para mostrar una marca que ya está en el ícono.
+   ============================================================ */
+#nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 30;
   display: flex;
+  background: var(--fondo);
+  border-top: 1px solid var(--borde);
+  padding-bottom: env(safe-area-inset-bottom);
+  transition: transform .22s ease;
+}
+
+#nav[hidden] { display: none; }
+
+#nav button {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--barra-alto);
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: max(10px, env(safe-area-inset-top)) 16px 10px;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: color-mix(in srgb, var(--fondo) 88%, transparent);
-  backdrop-filter: saturate(1.4) blur(10px);
-  border-bottom: 1px solid transparent;
-  transition: transform .25s ease, border-color .2s;
-}
-
-header[hidden] { display: none; }
-
-/* Al leer, la barra se va. Vuelve al subir. */
-body.leyendo header { transform: translateY(-100%); }
-body.leyendo.mostrar-barra header { transform: none; border-bottom-color: var(--borde); }
-
-@media (prefers-reduced-motion: reduce) {
-  header { transition: none; }
-}
-
-.marca { font-weight: 640; letter-spacing: -0.015em; font-size: 15px; }
-.racha {
-  margin-left: auto;
-  color: var(--texto-2);
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
-/* ---------- navegación ---------- */
-nav { display: flex; gap: 2px; margin-left: 14px; }
-nav[hidden] { display: none; }
-
-nav button {
+  justify-content: center;
+  gap: 3px;
   background: none;
   border: none;
-  padding: 6px 12px;
-  min-height: 0;
-  color: var(--texto-2);
-  font-size: 14px;
-  border-radius: 999px;
+  border-radius: 0;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--texto-3);
 }
 
-nav button[aria-current="page"] {
-  color: var(--texto);
-  background: var(--tarjeta);
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+#nav button .ico {
+  font-size: 17px;
+  line-height: 1;
+  font-weight: 400;
+}
+
+#nav button[aria-current="page"] { color: var(--marca); }
+
+/* Al leer, los destinos salen y entra la barra del lector en su lugar */
+body.leyendo #nav { transform: translateY(100%); pointer-events: none; }
+
+/* ---------- la barra del lector ---------- */
+#lector-pie {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 31;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px env(safe-area-inset-bottom);
+  min-height: var(--barra-alto);
+  background: var(--fondo);
+  border-top: 1px solid var(--borde);
+  transition: transform .22s ease;
+}
+
+#lector-pie[hidden] { display: none; }
+
+/* Se esconde al bajar y vuelve al subir, como la interfaz de los
+   lectores buenos. Lo que NO se esconde nunca es la salida. */
+body.leyendo:not(.mostrar-barra) #lector-pie { transform: translateY(100%); }
+
+#lector-pie button {
+  background: none;
+  border: none;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+  color: var(--texto-2);
+  font-size: 15px;
+}
+
+#lector-pie .aa { font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+
+#lector-restante {
+  margin-left: auto;
+  padding-right: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--texto-3);
+}
+
+/* La barra de progreso vive pegada a la barra del lector: el mismo
+   dato que los minutos, y a la vista. Arriba nadie la mira. */
+#progreso {
+  position: absolute;
+  top: -3px; left: 0;
+  height: 3px;
+  width: 0;
+  background: var(--lima);
+  transition: width .1s linear;
+}
+
+#progreso[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  #nav, #lector-pie, #progreso, .barra-llena { transition: none; }
+  button:active { transform: none; }
 }
 
 /* ---------- aviso de versión nueva ---------- */
@@ -177,15 +260,15 @@ nav button[aria-current="page"] {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(16px + env(safe-area-inset-bottom));
+  bottom: calc(var(--barra-alto) + 12px + env(safe-area-inset-bottom));
   z-index: 50;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   background: var(--negro);
   color: var(--sobre-negro);
   border-radius: 999px;
-  padding: 8px 8px 8px 18px;
+  padding: 6px 6px 6px 18px;
   font-size: 14px;
   box-shadow: 0 6px 24px rgba(0,0,0,.18);
   max-width: calc(100vw - 32px);
@@ -198,68 +281,95 @@ nav button[aria-current="page"] {
   color: var(--negro);
   border: none;
   border-radius: 999px;
-  min-height: 34px;
+  min-height: 44px;
   padding: 6px 16px;
   font-size: 13px;
   font-weight: 600;
 }
 
-/* ---------- barra de progreso de lectura ---------- */
-#progreso {
-  position: fixed;
-  top: 0; left: 0;
-  height: 2px;
-  width: 0;
-  background: var(--texto);
-  z-index: 40;
-  transition: width .1s linear;
-}
-
-#progreso[hidden] { display: none; }
-
 /* ---------- layout ---------- */
 main {
   max-width: var(--ancho);
   margin: 0 auto;
-  padding: 28px 18px calc(56px + env(safe-area-inset-bottom));
+  padding:
+    max(24px, calc(env(safe-area-inset-top) + 12px))
+    max(18px, env(safe-area-inset-right))
+    calc(var(--barra-alto) + 32px + env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
+}
+
+/* Medida de lectura atada al tamaño elegido: así la línea mantiene
+   los ~66 caracteres cómodos en los tres tamaños, en vez de estirarse
+   a 88 en escritorio. */
+body.leyendo main { max-width: calc(var(--lectura-tam) * 33 + 36px); }
+
+@media (min-width: 700px) {
+  body.leyendo main { padding-top: 56px; }
 }
 
 .cargando { color: var(--texto-2); padding: 48px 0; text-align: center; }
 
 h1 {
-  font-size: clamp(27px, 6vw, 35px);
+  font-size: clamp(26px, 7vw, 35px);
   line-height: 1.15;
   letter-spacing: -0.028em;
   margin: 0 0 10px;
-  font-weight: 640;
+  font-weight: 700;
+  text-wrap: balance;
 }
 
-h2 { font-size: 20px; line-height: 1.3; letter-spacing: -0.015em; margin: 32px 0 10px; font-weight: 620; }
-h3 { font-size: 17px; margin: 24px 0 8px; font-weight: 620; }
+h2 { font-size: 20px; line-height: 1.3; letter-spacing: -0.015em; margin: 32px 0 10px; font-weight: 600; }
+h3 { font-size: 17px; margin: 24px 0 8px; font-weight: 600; }
 p { margin: 0 0 16px; }
 ul { margin: 0 0 16px; padding-left: 22px; }
 li { margin-bottom: 8px; }
-strong { font-weight: 640; }
+strong { font-weight: 700; }
 
 .bajada { color: var(--texto-2); font-size: 17px; margin-bottom: 26px; }
 
 /* Etiqueta técnica: chica, monoespaciada, gris. El detalle que le da
    oficio a todo lo demás. */
-.paso {
+.paso, .etiqueta {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--texto-3);
   text-transform: uppercase;
-  letter-spacing: .09em;
+  letter-spacing: .07em;
   margin-bottom: 10px;
 }
 
 .ayuda { color: var(--texto-2); font-size: 14px; margin: -6px 0 18px; }
 
+/* Encabezado de Hoy: lo único que quedaba del header de arriba, en el
+   lugar donde sí se mira. */
+.cabecera {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 22px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--texto-3);
+}
+
+.cabecera .marca { font-weight: 700; color: var(--texto); letter-spacing: .04em; }
+.cabecera .marca::after {
+  content: '';
+  display: inline-block;
+  width: 5px; height: 5px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: var(--lima);
+  vertical-align: .08em;
+}
+.cabecera .racha { margin-left: auto; }
+
 /* ---------- controles ---------- */
 button {
   font: inherit;
-  font-weight: 540;
+  font-weight: 500;
   cursor: pointer;
   border-radius: var(--radio-chico);
   border: 1px solid var(--borde);
@@ -273,26 +383,33 @@ button {
 button:active { transform: scale(.985); }
 @media (hover: hover) and (pointer: fine) { button:hover { border-color: var(--texto-3); } }
 
-/* La acción principal es negra, como en los buenos paneles */
+/* La acción principal es el verde de la referencia. Es el único verde
+   sólido grande de la pantalla, y es siempre "lo que te toca a vos". */
 .primario {
-  background: var(--negro);
-  border-color: var(--negro);
-  color: var(--sobre-negro);
+  background: var(--lima);
+  border-color: var(--lima);
+  color: var(--sobre-lima);
   width: 100%;
   font-size: 16px;
-  font-weight: 560;
+  font-weight: 600;
   border-radius: 999px;
   margin-top: 8px;
 }
 
-@media (hover: hover) and (pointer: fine) { .primario:hover { border-color: var(--negro); opacity: .9; } }
+@media (hover: hover) and (pointer: fine) {
+  .primario:hover { background: var(--lima-viva); border-color: var(--lima-viva); }
+}
 
 .link {
+  display: inline-flex;
+  align-items: center;
   background: none;
   border: none;
   color: var(--texto-2);
-  padding: 10px 2px;
-  min-height: 0;
+  min-height: 44px;
+  padding: 12px 14px;
+  /* Margen negativo: agranda el blanco táctil sin desalinear el texto */
+  margin-left: -14px;
   font-size: 14px;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -306,17 +423,18 @@ textarea, input {
   border: 1px solid var(--borde);
   border-radius: var(--radio-chico);
   padding: 14px;
-  font-size: 16.5px;
+  /* 16 es el mínimo: por debajo iOS zoomea el formulario al enfocar */
+  font-size: 16px;
 }
 
-textarea { min-height: 120px; resize: vertical; }
+textarea { min-height: 110px; resize: vertical; }
 
 input:focus, textarea:focus, button:focus-visible {
-  outline: 2px solid var(--texto);
+  outline: 2px solid var(--marca);
   outline-offset: 2px;
 }
 
-label { display: block; font-weight: 560; margin: 0 0 8px; font-size: 15px; }
+label { display: block; font-weight: 500; margin: 0 0 8px; font-size: 15px; }
 
 /* ---------- chips ---------- */
 .opciones { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
@@ -326,14 +444,17 @@ label { display: block; font-weight: 560; margin: 0 0 8px; font-size: 15px; }
   border-radius: 999px;
   border: 1px solid var(--borde);
   background: var(--tarjeta);
-  min-height: 44px;
+  min-height: 48px;
   font-size: 15px;
 }
 
+/* Lo que elegiste es verde de baja intensidad. Lo que hay que apretar
+   es verde sólido. Antes las dos cosas eran la misma píldora negra. */
 .chip[aria-pressed="true"] {
-  background: var(--negro);
-  border-color: var(--negro);
-  color: var(--sobre-negro);
+  background: var(--marca-suave);
+  border-color: var(--marca-borde);
+  color: var(--marca);
+  font-weight: 600;
 }
 
 /* ---------- tarjetas ---------- */
@@ -346,14 +467,15 @@ label { display: block; font-weight: 560; margin: 0 0 8px; font-size: 15px; }
 }
 
 .tarjeta h2 { margin-top: 0; }
-.tarjeta article { font-size: 17px; }
-.tarjeta article > p:first-child { font-size: 17px; line-height: 1.68; }
+/* Sigue al tamaño elegido: antes las capas de ejecución se quedaban
+   clavadas en 17px aunque hubieras pedido texto grande. */
+.tarjeta article { font-size: calc(var(--lectura-tam) * 0.94); }
 .tarjeta article p:last-child { margin-bottom: 0; }
 
 .instrucciones {
   white-space: pre-wrap;
   font-family: var(--mono);
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1.65;
   background: var(--tarjeta);
   border: 1px solid var(--borde);
@@ -369,98 +491,99 @@ article {
   font-family: var(--lectura);
   font-size: var(--lectura-tam);
   line-height: var(--lectura-alto);
-  letter-spacing: 0.002em;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+  /* La pila serif tiene alturas de x muy distintas según el aparato:
+     sin esto, el mismo 19,5px se ve de tres tamaños. */
+  font-size-adjust: ex-height 0.47;
+  hyphens: auto;
+  -webkit-hyphens: auto;
 }
 
-article p { margin: 0 0 1.15em; }
+article p, article li { text-wrap: pretty; }
+article p { margin: 0 0 1.3em; }
 
-/* Los subtítulos escalan con el tamaño elegido: si no, al agrandar el
-   texto quedan más chicos que el cuerpo y se pierde la jerarquía. */
+/* Los subtítulos escalan con el tamaño elegido Y son más grandes que
+   el cuerpo. Antes eran más chicos, o sea que no había jerarquía. */
 article h2 {
   font-family: var(--ui);
-  font-size: calc(var(--lectura-tam) * 0.98);
-  font-weight: 620;
-  margin: 44px 0 14px;
+  font-size: calc(var(--lectura-tam) * 1.2);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -.015em;
+  margin: 1.9em 0 .55em;
+  text-wrap: balance;
+  scroll-margin-top: 24px;
 }
 
 article h3 {
   font-family: var(--ui);
-  font-size: calc(var(--lectura-tam) * 0.84);
-  font-weight: 620;
-  margin: 34px 0 12px;
+  font-size: calc(var(--lectura-tam) * 1.0);
+  font-weight: 700;
+  margin: 1.7em 0 .5em;
+  text-wrap: balance;
+  scroll-margin-top: 24px;
 }
 
 article li { margin-bottom: .55em; }
-article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-height: 1.6; }
 
-/* Controles del lector */
-.lector-barra {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 26px;
-  color: var(--texto-3);
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: .06em;
-  text-transform: uppercase;
+/* Un solo copete. Antes había dos pegados, y el de arriba era más
+   chico que el cuerpo que presentaba. */
+body.leyendo .bajada {
+  font-family: var(--lectura);
+  font-size: calc(var(--lectura-tam) * 1.1);
+  line-height: 1.45;
+  margin-bottom: 30px;
 }
 
-.lector-barra .restante { margin-left: auto; }
-
-.aa {
-  border: 1px solid var(--borde);
-  background: var(--tarjeta);
-  border-radius: 999px;
-  min-height: 32px;
-  padding: 4px 13px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  font-family: var(--ui);
+article ::selection {
+  background: color-mix(in srgb, var(--marca) 22%, transparent);
+  color: var(--texto);
 }
 
+:root[data-tema="oscuro"] article strong { letter-spacing: .006em; }
+
+/* Panel de ajustes: hoja de abajo. Antes vivía arriba del título y
+   abrirlo empujaba el texto, así que cambiar el tamaño te movía de
+   lugar justo cuando querías mirar el cambio. */
 .ajustes {
+  position: fixed;
+  left: 12px; right: 12px;
+  bottom: calc(var(--barra-alto) + 12px + env(safe-area-inset-bottom));
+  max-width: 420px;
+  margin: 0 auto;
+  z-index: 45;
   border: 1px solid var(--borde);
   background: var(--tarjeta);
   border-radius: var(--radio);
-  padding: 16px;
-  margin-bottom: 26px;
+  padding: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
 }
 
-.ajustes-fila {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
+.ajustes[hidden] { display: none; }
 
+.ajustes-fila { display: flex; gap: 6px; margin-bottom: 8px; }
 .ajustes-fila:last-child { margin-bottom: 0; }
-
-.ajustes-fila > span {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--texto-3);
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  width: 62px;
-  flex: none;
-}
 
 .ajustes button {
   flex: 1;
-  min-height: 40px;
-  padding: 8px;
-  font-size: 14px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 4px;
+  font-size: 13px;
   border-radius: 10px;
 }
 
 .ajustes button[aria-pressed="true"] {
-  background: var(--negro);
-  border-color: var(--negro);
-  color: var(--sobre-negro);
+  background: var(--marca-suave);
+  border-color: var(--marca-borde);
+  color: var(--marca);
+  font-weight: 600;
 }
+
+.ajustes .tam-chico { font-size: 13px; font-weight: 700; }
+.ajustes .tam-normal { font-size: 16px; font-weight: 700; }
+.ajustes .tam-grande { font-size: 20px; font-weight: 700; }
 
 .retomar {
   display: flex;
@@ -469,14 +592,14 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
   background: var(--tarjeta);
   border: 1px solid var(--borde);
   border-radius: var(--radio);
-  padding: 12px 16px;
+  padding: 10px 14px;
   margin-bottom: 22px;
   font-size: 14px;
 }
 
 .retomar button {
   margin-left: auto;
-  min-height: 34px;
+  min-height: 44px;
   padding: 6px 14px;
   font-size: 13px;
   border-radius: 999px;
@@ -493,7 +616,7 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
   font-size: 11px;
   color: var(--texto-3);
   text-transform: uppercase;
-  letter-spacing: .08em;
+  letter-spacing: .07em;
   margin-bottom: 12px;
 }
 
@@ -517,47 +640,98 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
 
 .dia-letra {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--texto-3);
   margin-top: 6px;
   letter-spacing: .05em;
 }
 
 .dia-hecho .dia-punto {
-  background: var(--negro);
-  border-color: var(--negro);
-  color: var(--sobre-negro);
+  background: var(--lima);
+  border-color: var(--lima);
+  color: var(--sobre-lima);
+  font-weight: 700;
 }
 
-.dia-hoy .dia-punto { border-color: var(--texto); border-width: 2px; }
-.dia-hoy .dia-letra { color: var(--texto); }
+.dia-hoy .dia-punto { border-color: var(--marca); border-width: 2px; }
+.dia-hoy .dia-letra { color: var(--marca); font-weight: 700; }
 .dia-porvenir .dia-punto { border-style: dashed; background: none; }
 
-/* ---------- cierre de lección ----------
-   Más aire que antes: es el momento en que se le pide algo a la
-   persona y apurarlo se siente como un formulario. */
-.cierre { border-top: 1px solid var(--borde); margin-top: 52px; padding-top: 36px; }
-.cierre label { margin-bottom: 14px; font-size: 16px; }
+/* ============================================================
+   CIERRE — se responde de a una pregunta
+   ============================================================
+   Antes las tres preguntas aparecían juntas y ocupaban una pantalla
+   entera: diez botones en dos filas, dos píldoras y tres botones más.
+   Ahora la escala entra en una sola línea y cada pregunta aparece
+   cuando contestaste la anterior. Las salidas, en cambio, están desde
+   el principio: nadie puede quedar encerrado por no querer responder.
+   ============================================================ */
+.cierre {
+  border-top: 1px solid var(--borde);
+  margin-top: 64px;
+  padding-top: 22px;
+}
 
-.escala { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; margin-bottom: 8px; }
+/* El repaso no viene despues de diez minutos de lectura */
+.cierre.apretado { margin-top: 28px; }
+
+.cierre-paso { margin-bottom: 20px; }
+.cierre-paso[hidden] { display: none; }
+
+.cierre-paso.aparece { animation: aparecer .24s ease both; }
+
+@keyframes aparecer {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cierre-paso.aparece { animation: none; }
+}
+
+.pregunta {
+  font-family: var(--ui);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0 0 10px;
+}
+
+/* La escala en una sola línea: un riel segmentado, no diez botones.
+   A 375px cada celda queda de ~31px, que es angosto para un botón
+   suelto pero correcto para un segmento dentro de un riel. */
+.escala {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--borde);
+  background: var(--tarjeta);
+  border-radius: 999px;
+}
 
 .escala button {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
   padding: 0;
-  min-height: 46px;
-  font-size: 14px;
-  border-radius: 10px;
+  border: none;
+  background: none;
+  border-radius: 999px;
   font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--texto-2);
 }
 
 .escala button[aria-pressed="true"] {
-  background: var(--negro);
-  border-color: var(--negro);
-  color: var(--sobre-negro);
+  background: var(--lima);
+  color: var(--sobre-lima);
+  font-weight: 700;
 }
 
-@media (max-width: 460px) {
-  .escala { grid-template-columns: repeat(5, 1fr); }
-  .escala button { min-height: 50px; }
+@media (hover: hover) and (pointer: fine) {
+  .escala button:hover { background: var(--marca-suave); }
+  .escala button[aria-pressed="true"]:hover { background: var(--lima-viva); }
 }
 
 .escala-pies {
@@ -565,33 +739,63 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
   justify-content: space-between;
   color: var(--texto-3);
   font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: .06em;
+  font-size: 11px;
+  letter-spacing: .07em;
   text-transform: uppercase;
-  margin-bottom: 26px;
+  margin-top: 8px;
+  padding: 0 4px;
 }
+
+/* Pregunta y respuesta en la misma línea cuando son dos opciones */
+.cierre-fila { display: flex; align-items: center; gap: 12px; }
+.cierre-fila .pregunta { margin: 0; flex: 1; }
 
 .pulgares { display: flex; gap: 8px; }
-.pulgares button { flex: 1; font-size: 15px; border-radius: 999px; }
 
-.pulgares button[aria-pressed="true"] {
-  background: var(--negro);
-  border-color: var(--negro);
-  color: var(--sobre-negro);
+.pulgares button {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 14px;
+  border-radius: 999px;
 }
 
-.secundarias { display: flex; gap: 8px; margin-top: 14px; }
-.secundarias button { flex: 1; font-size: 14px; border-radius: 999px; }
+.cierre-paso.apilado .pulgares button { flex: 1; }
+
+.pulgares button[aria-pressed="true"] {
+  background: var(--marca-suave);
+  border-color: var(--marca-borde);
+  color: var(--marca);
+  font-weight: 600;
+}
+
+/* Las salidas no son botones: son puertas. Chicas y siempre a la vista. */
+.salidas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 20px;
+  margin-top: 14px;
+}
+
+.salidas button {
+  background: none;
+  border: none;
+  min-height: 44px;
+  padding: 10px 0;
+  font-size: 14px;
+  color: var(--texto-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 /* ---------- biblioteca ---------- */
 .libro { display: block; width: 100%; text-align: left; padding: 18px 20px; }
-.libro .titulo { font-weight: 600; display: block; font-size: 16px; }
+.libro .titulo { font-weight: 600; display: block; font-size: 17px; }
 .libro .autor { color: var(--texto-2); font-size: 14px; }
 
 .libro .marca-leido {
   display: inline-block;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: .07em;
   text-transform: uppercase;
   color: var(--texto-3);
@@ -602,7 +806,7 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
 
 .tema {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: .05em;
   text-transform: uppercase;
   color: var(--texto-3);
@@ -611,11 +815,11 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
   padding: 3px 9px;
 }
 
-.progreso {
+.avance {
   color: var(--texto-3);
   font-family: var(--mono);
   font-size: 11px;
-  letter-spacing: .06em;
+  letter-spacing: .07em;
   text-transform: uppercase;
   margin-bottom: 20px;
 }
@@ -631,7 +835,15 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
 /* ---------- mapa ---------- */
 
 /* El número grande como protagonista de la pantalla */
-.cifra { display: flex; align-items: center; gap: 18px; margin-bottom: 28px; }
+.cifra {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 0 -14px 28px;
+  padding: 16px 14px;
+  border-radius: var(--radio);
+  background: radial-gradient(120% 140% at 0% 0%, var(--marca-suave) 0%, transparent 62%);
+}
 
 .cifra-numero {
   font-size: clamp(64px, 17vw, 86px);
@@ -640,7 +852,8 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
   font-weight: 600;
 }
 
-.cifra-etiqueta { font-size: 16px; font-weight: 560; }
+.cifra-lado { min-width: 0; }
+.cifra-etiqueta { font-size: 16px; font-weight: 600; }
 
 .cifra-detalle {
   font-family: var(--mono);
@@ -672,7 +885,7 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
   font-size: 11px;
   color: var(--texto-3);
   text-transform: uppercase;
-  letter-spacing: .09em;
+  letter-spacing: .07em;
   margin: 26px 0 10px;
 }
 
@@ -700,24 +913,33 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
   text-align: right;
 }
 
-.nodo-lejos { opacity: .4; }
+.nodo-lejos { opacity: .45; }
 
 .barra { height: 6px; border-radius: 999px; background: var(--borde); overflow: hidden; }
-.barra-llena { height: 100%; background: var(--texto); border-radius: 999px; transition: width .5s ease; }
+
+.barra-llena {
+  height: 100%;
+  background: linear-gradient(90deg, var(--marca), var(--lima));
+  border-radius: 999px;
+  transition: width .5s ease;
+}
 
 .nodo-marcas { display: flex; align-items: center; gap: 8px; min-width: 50px; justify-content: flex-end; }
 
-/* El acento aparece acá y casi en ningún otro lado: donde el campo se
-   movió y vos no. */
+/* La lima rellena lo que es tuyo; este punto marca lo contrario: donde
+   el campo se movió y vos no. Por eso va en el verde oscuro, no en el
+   mismo relleno que tus logros. */
 .punto {
-  background: var(--lima);
-  color: var(--sobre-lima);
+  background: var(--marca);
+  color: var(--tarjeta);
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: .05em;
   border-radius: 999px;
   padding: 2px 8px;
 }
+
+.pie-mapa { margin-top: 36px; border-top: 1px solid var(--borde); padding-top: 10px; }
 
 @media (max-width: 480px) {
   .nodo { grid-template-columns: 1fr 56px 28px auto; gap: 8px; }
@@ -735,20 +957,20 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
   background: var(--tarjeta);
 }
 
-.plegable summary { cursor: pointer; padding: 13px 0; font-weight: 560; list-style: none; font-size: 15px; }
+.plegable summary { cursor: pointer; padding: 13px 0; font-weight: 500; list-style: none; font-size: 15px; }
 .plegable summary::-webkit-details-marker { display: none; }
 .plegable summary::before { content: '› '; color: var(--texto-3); }
 .plegable[open] summary::before { content: '⌄ '; }
-.plegable .tarjeta { background: var(--fondo); }
+.plegable .tarjeta { background: color-mix(in srgb, var(--texto) 4%, var(--tarjeta)); }
 .plegable > p:last-child { padding-bottom: 12px; }
 
 /* ---------- avisos ---------- */
 .aviso {
   background: var(--tarjeta);
   border: 1px solid var(--borde);
-  border-left: 3px solid var(--texto);
+  border-left: 3px solid var(--marca);
   padding: 14px 16px;
-  border-radius: 0 var(--radio-chico) var(--radio-chico) 0;
+  border-radius: var(--radio-chico);
   margin-bottom: 20px;
   font-size: 15px;
 }
@@ -756,8 +978,5 @@ article > p:first-child { font-size: calc(var(--lectura-tam) + 1.5px); line-heig
 .error { color: var(--no); margin-bottom: 16px; }
 
 @media (max-width: 480px) {
-  main { padding: 22px 18px calc(48px + env(safe-area-inset-bottom)); }
   h1 { font-size: 27px; }
-  nav button { padding: 6px 9px; font-size: 13px; }
-  .marca { font-size: 14px; }
 }
