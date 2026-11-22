@@ -347,22 +347,7 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
   // Retomar: solo si quedó a más de un 8% y sin terminar.
   const guardado = parseFloat(prefs.leer('pos.' + clave, '0'));
   const bloqueGuardado = parseInt(prefs.leer('blq.' + clave, '-1'), 10);
-  let avisoRetomar = null;
-  if (guardado > 0.08 && guardado < 0.92) {
-    avisoRetomar = el('div', { class: 'retomar' }, [
-      el('span', { text: `Lo dejaste por el ${Math.round(guardado * 100)}%` }),
-      el('button', {
-        text: 'Seguir ahí',
-        onclick: () => {
-          irAlBloque(bloqueGuardado >= 0
-            ? bloqueGuardado
-            : Math.round(cuerpo.children.length * guardado));
-          avisoRetomar.remove();
-        }
-      })
-    ]);
-    nodos.push(avisoRetomar);
-  }
+  const hayQueRetomar = guardado > 0.08 && guardado < 0.92;
 
   nodos.push(cuerpo);
   if (extras) nodos.push(extras);
@@ -380,6 +365,33 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
 
   pieLector.hidden = false;
   if (barraProgreso) barraProgreso.hidden = false;
+
+  // Volver solo a donde quedaste, en vez de pedir permiso para hacerlo.
+  // El cartel viejo aparecía arriba del título, empujaba la pieza hacia
+  // abajo y te hacía decidir algo antes de haber leído una línea. Los
+  // lectores buenos hacen al revés: te devuelven donde estabas y te
+  // ofrecen el principio por si no era eso lo que querías.
+  let aviso = null;
+  const sacarAviso = () => { if (aviso) { aviso.remove(); aviso = null; } };
+  let avisoEn = null;
+
+  if (hayQueRetomar) {
+    requestAnimationFrame(() => {
+      irAlBloque(bloqueGuardado >= 0
+        ? bloqueGuardado
+        : Math.round(cuerpo.children.length * guardado));
+
+      aviso = el('div', { class: 'volviste' }, [
+        el('span', { text: `Volviste al ${Math.round(guardado * 100)}%` }),
+        el('button', {
+          text: 'Ir al principio',
+          onclick: () => { sacarAviso(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+        })
+      ]);
+      document.body.append(aviso);
+      avisoEn = setTimeout(sacarAviso, 7000);
+    });
+  }
 
   const alternarAjustes = () => {
     const abrir = ajustes.hidden;
@@ -450,6 +462,8 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
   alScrollear();
 
   limpiarLector = () => {
+    clearTimeout(avisoEn);
+    sacarAviso();
     window.removeEventListener('scroll', alScrollear);
     document.removeEventListener('keydown', alTeclado);
     document.removeEventListener('pointerdown', alTocarFuera);

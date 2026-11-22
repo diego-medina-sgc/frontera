@@ -22,6 +22,7 @@
   <div id="version-nueva" hidden>
     <span>Hay una versión nueva</span>
     <button id="actualizar" type="button">Actualizar</button>
+    <button id="cerrar-aviso" type="button" aria-label="Cerrar el aviso">✕</button>
   </div>
 
   <main id="vista" aria-live="polite">
@@ -86,6 +87,11 @@
 
       document.addEventListener('click', (e) => {
         if (e.target?.id === 'actualizar') location.reload();
+        // Sin esto el aviso se queda encima de la barra de abajo hasta
+        // que recargues, aunque ahora no quieras recargar.
+        if (e.target?.id === 'cerrar-aviso') {
+          document.getElementById('version-nueva').hidden = true;
+        }
       });
     }
   </script>
