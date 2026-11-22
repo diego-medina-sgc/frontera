@@ -30,16 +30,27 @@
   --negro: #15161a;
   --sobre-negro: #ffffff;
 
-  /* El verde de la referencia. Se usa como relleno: lo que es tuyo
-     o lo que te toca hacer. */
-  --lima: #d7f24b;
-  --lima-viva: #cbe93a;
-  --sobre-lima: #17190c;
+  /* El acento. La persona lo elige en Ajustes y la lima es el de
+     fábrica. Cada acento trae cuatro valores medidos y no uno solo: el
+     relleno, el color del texto que va encima, y la versión legible
+     como texto en fondo claro y en fondo oscuro. Derivar las cuatro de
+     un hex es exactamente lo que rompe el contraste, que es el error
+     que este archivo ya tenía una vez.
+     Los pone app.js sobre el <html>. */
+  --acento: #d7f24b;
+  --sobre-acento: #17190c;
+  --acento-texto-claro: #4d6b16;
+  --acento-texto-oscuro: #b9d94a;
 
-  /* El mismo verde en versión texto, para donde la lima no contrasta */
-  --marca: #4d6b16;
-  --marca-suave: #f2f7dc;
-  --marca-borde: #e0ebb8;
+  /* Lo que el resto del archivo usa. Se redefine por tema más abajo. */
+  --relleno: var(--acento);
+  --sobre-relleno: var(--sobre-acento);
+  --marca: var(--acento-texto-claro);
+
+  /* Derivadas: como --marca ya es oscura sobre claro y clara sobre
+     oscuro, mezclarla con la tarjeta da siempre un tinte suave. */
+  --marca-suave: color-mix(in srgb, var(--marca) 13%, var(--tarjeta));
+  --marca-borde: color-mix(in srgb, var(--marca) 30%, var(--tarjeta));
 
   --ok: #1f9d55;
   --no: #d1453b;
@@ -70,9 +81,9 @@
     --borde: #2c2e33;
     --negro: #d8dade;
     --sobre-negro: #16171a;
-    --marca: #b9d94a;
-    --marca-suave: #1e2412;
-    --marca-borde: #333d1c;
+    --relleno: var(--acento-texto-oscuro);
+    --sobre-relleno: #11140f;
+    --marca: var(--acento-texto-oscuro);
     --ok: #3fbd82;
     --no: #e2795f;
   }
@@ -87,9 +98,9 @@
   --borde: #2c2e33;
   --negro: #d8dade;
   --sobre-negro: #16171a;
-  --marca: #b9d94a;
-  --marca-suave: #1e2412;
-  --marca-borde: #333d1c;
+  --relleno: var(--acento-texto-oscuro);
+  --sobre-relleno: #11140f;
+  --marca: var(--acento-texto-oscuro);
   --ok: #3fbd82;
   --no: #e2795f;
 }
@@ -107,9 +118,7 @@
   --borde: #d3c5a8;
   --negro: #3b3226;
   --sobre-negro: #faf4e6;
-  --marca: #55631f;
-  --marca-suave: #e1e7c0;
-  --marca-borde: #c3cf96;
+  --marca: var(--acento-texto-claro);
 }
 
 * { box-sizing: border-box; }
@@ -244,7 +253,7 @@ body.leyendo:not(.mostrar-barra) #lector-pie { transform: translateY(100%); }
   top: -3px; left: 0;
   height: 3px;
   width: 0;
-  background: var(--lima);
+  background: var(--relleno);
   transition: width .1s linear;
 }
 
@@ -361,10 +370,27 @@ strong { font-weight: 700; }
   width: 5px; height: 5px;
   margin-left: 5px;
   border-radius: 50%;
-  background: var(--lima);
+  background: var(--relleno);
   vertical-align: .08em;
 }
-.cabecera .racha { margin-left: auto; }
+.cabecera-fin {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.cabecera-ajustes {
+  font: inherit;
+  background: none;
+  border: none;
+  border-radius: 0;
+  min-height: 44px;
+  padding: 0;
+  color: var(--texto-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 /* ---------- controles ---------- */
 button {
@@ -386,9 +412,9 @@ button:active { transform: scale(.985); }
 /* La acción principal es el verde de la referencia. Es el único verde
    sólido grande de la pantalla, y es siempre "lo que te toca a vos". */
 .primario {
-  background: var(--lima);
-  border-color: var(--lima);
-  color: var(--sobre-lima);
+  background: var(--relleno);
+  border-color: var(--relleno);
+  color: var(--sobre-relleno);
   width: 100%;
   font-size: 16px;
   font-weight: 600;
@@ -397,7 +423,10 @@ button:active { transform: scale(.985); }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .primario:hover { background: var(--lima-viva); border-color: var(--lima-viva); }
+  .primario:hover {
+    background: color-mix(in srgb, var(--relleno) 90%, var(--texto));
+    border-color: color-mix(in srgb, var(--relleno) 90%, var(--texto));
+  }
 }
 
 .link {
@@ -647,9 +676,9 @@ article ::selection {
 }
 
 .dia-hecho .dia-punto {
-  background: var(--lima);
-  border-color: var(--lima);
-  color: var(--sobre-lima);
+  background: var(--relleno);
+  border-color: var(--relleno);
+  color: var(--sobre-relleno);
   font-weight: 700;
 }
 
@@ -724,14 +753,14 @@ article ::selection {
 }
 
 .escala button[aria-pressed="true"] {
-  background: var(--lima);
-  color: var(--sobre-lima);
+  background: var(--relleno);
+  color: var(--sobre-relleno);
   font-weight: 700;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .escala button:hover { background: var(--marca-suave); }
-  .escala button[aria-pressed="true"]:hover { background: var(--lima-viva); }
+  .escala button[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--relleno) 90%, var(--texto)); }
 }
 
 .escala-pies {
@@ -785,6 +814,81 @@ article ::selection {
   color: var(--texto-2);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* ============================================================
+   AJUSTES
+   ============================================================ */
+.grupo { margin-bottom: 36px; }
+.grupo > .etiqueta { margin-bottom: 14px; }
+.grupo > .ayuda { margin: 14px 0 0; }
+
+/* Seis muestras en una fila: a 375px entran los seis sin apretarse
+   (6 x 46 + 5 x 10 = 326 de 339 disponibles). */
+.colores { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.color {
+  width: 46px;
+  height: 46px;
+  min-height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--texto) 14%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* El fondo y el color del tilde los pone el JS: son los del acento */
+}
+
+/* El anillo va separado de la muestra por el color del lienzo, que es
+   lo que lo hace legible sobre cualquiera de los seis. */
+.color[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--fondo), 0 0 0 4px var(--texto);
+}
+
+.color span {
+  font-size: 15px;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.color[aria-pressed="true"] span { opacity: 1; }
+
+@media (hover: hover) and (pointer: fine) {
+  .color:hover { border-color: color-mix(in srgb, var(--texto) 40%, transparent); }
+}
+
+.color-nombre {
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--texto-3);
+}
+
+/* Los mismos controles del lector, pero dentro de la pantalla de
+   ajustes en vez de en la hoja de abajo. */
+.ajustes-suelto {
+  position: static;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+.ajustes-suelto .ajustes-fila { gap: 8px; margin-bottom: 10px; }
+.ajustes-suelto button { min-height: 48px; font-size: 14px; border-radius: var(--radio-chico); }
+
+.cuenta-mail {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--texto-2);
+  margin-bottom: 4px;
+  word-break: break-all;
 }
 
 /* ---------- biblioteca ---------- */
@@ -919,7 +1023,7 @@ article ::selection {
 
 .barra-llena {
   height: 100%;
-  background: linear-gradient(90deg, var(--marca), var(--lima));
+  background: linear-gradient(90deg, var(--marca), var(--relleno));
   border-radius: 999px;
   transition: width .5s ease;
 }
@@ -938,8 +1042,6 @@ article ::selection {
   border-radius: 999px;
   padding: 2px 8px;
 }
-
-.pie-mapa { margin-top: 36px; border-top: 1px solid var(--borde); padding-top: 10px; }
 
 @media (max-width: 480px) {
   .nodo { grid-template-columns: 1fr 56px 28px auto; gap: 8px; }

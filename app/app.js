@@ -17,6 +17,7 @@ const vista = document.getElementById('vista');
 // La racha ya no vive en una esquina de arriba: se dibuja en Hoy, al
 // lado de la fila de la semana, que es el mismo dato.
 let semanasSeguidas = 0;
+let mail = null;
 
 let perfil = null;
 let herramientas = [];
@@ -131,6 +132,47 @@ function aplicarTamano() {
   document.documentElement.style.setProperty('--lectura-alto', String(t.alto));
 }
 
+// ------------------------------------------------------------
+// El acento
+// ------------------------------------------------------------
+// Seis acentos curados y no un selector libre de color. Un selector
+// libre garantiza que tarde o temprano alguien elija algo que no
+// contrasta, y el contraste no es cuestión de gusto.
+//
+// Cada acento trae cuatro valores y no uno: el relleno, el color del
+// texto que va encima del relleno, y la versión legible como texto
+// sobre fondo claro y sobre fondo oscuro. Los cuatro están medidos
+// contra el lienzo de cada tema y ninguno baja de 4,5:1. Derivar todo
+// de un solo hex es lo que rompe el contraste en modo oscuro.
+//
+// Las paletas salen de la referencia que pasó Diego: verdes, ámbares,
+// azules, violetas y óxidos.
+const ACENTOS = [
+  { id: 'lima',    nombre: 'Lima',    relleno: '#d7f24b', sobre: '#17190c', claro: '#4d6b16', oscuro: '#b9d94a' },
+  { id: 'bosque',  nombre: 'Bosque',  relleno: '#3e5a3f', sobre: '#ffffff', claro: '#2f5636', oscuro: '#7fbf8a' },
+  { id: 'ambar',   nombre: 'Ámbar',   relleno: '#c07a2b', sobre: '#1a1206', claro: '#8a5415', oscuro: '#e0a350' },
+  { id: 'oceano',  nombre: 'Océano',  relleno: '#3a506b', sobre: '#ffffff', claro: '#2c4a6b', oscuro: '#85b4e0' },
+  { id: 'violeta', nombre: 'Violeta', relleno: '#5a3b8c', sobre: '#ffffff', claro: '#5a3b8c', oscuro: '#b49be0' },
+  { id: 'oxido',   nombre: 'Óxido',   relleno: '#a8432f', sobre: '#ffffff', claro: '#96402e', oscuro: '#e89080' }
+];
+
+function acentoActual() {
+  const id = prefs.leer('acento', 'lima');
+  return ACENTOS.find(a => a.id === id) || ACENTOS[0];
+}
+
+// Vive en el navegador, igual que el tamaño y el fondo: es una
+// preferencia de este aparato. Si querés que te siga entre teléfono y
+// computadora, hay que subirla al perfil, que es una columna más.
+function aplicarAcento() {
+  const a = acentoActual();
+  const raiz = document.documentElement.style;
+  raiz.setProperty('--acento', a.relleno);
+  raiz.setProperty('--sobre-acento', a.sobre);
+  raiz.setProperty('--acento-texto-claro', a.claro);
+  raiz.setProperty('--acento-texto-oscuro', a.oscuro);
+}
+
 // El tema de lectura, en cambio, vive SOLO mientras leés. Afuera la app
 // sigue el modo del sistema, como hace Apple Books: el sepia es una
 // condición de lectura, no una identidad del producto.
@@ -162,6 +204,7 @@ function quitarTemaLectura() {
 }
 
 aplicarTamano();
+aplicarAcento();
 
 const pieLector = document.getElementById('lector-pie');
 const btnVolver = document.getElementById('lector-volver');
@@ -185,7 +228,12 @@ function salirDelLector() {
 // texto a mitad de lección te deja trescientos píxeles más abajo, que
 // es justo cuando querías mirar el cambio sobre lo que estabas leyendo.
 function panelAjustes(ganchos = {}) {
-  const panel = el('div', { class: 'ajustes', hidden: 'true' });
+  // En el lector es una hoja de abajo que se abre con el Aa. En Ajustes
+  // son las mismas dos filas, sueltas dentro de la pantalla.
+  const panel = el('div', {
+    class: ganchos.enLinea ? 'ajustes ajustes-suelto' : 'ajustes',
+    hidden: ganchos.enLinea ? null : 'true'
+  });
 
   const fila = (etiqueta, clave, opciones, porDefecto) => {
     const f = el('div', { class: 'ajustes-fila' });
@@ -484,6 +532,7 @@ async function arrancar() {
 
   const { data: { session } } = await db.auth.getSession();
   if (!session) return vistaEntrar();
+  mail = session.user?.email || null;
 
   const { data, error: e } = await db
     .from('profiles').select('*').eq('id', session.user.id).single();
@@ -543,14 +592,76 @@ async function dibujarRacha() {
 function cabecera() {
   return el('div', { class: 'cabecera' }, [
     el('span', { class: 'marca', text: 'Frontera' }),
-    semanasSeguidas > 0
-      ? el('span', {
-          class: 'racha',
-          title: 'Semanas seguidas aprendiendo',
-          text: `${semanasSeguidas} ${semanasSeguidas === 1 ? 'semana' : 'semanas'}`
-        })
-      : null
+    el('div', { class: 'cabecera-fin' }, [
+      semanasSeguidas > 0
+        ? el('span', {
+            class: 'racha',
+            title: 'Semanas seguidas aprendiendo',
+            text: `${semanasSeguidas} ${semanasSeguidas === 1 ? 'semana' : 'semanas'}`
+          })
+        : null,
+      el('button', { class: 'cabecera-ajustes', text: 'Ajustes', onclick: vistaPerfil })
+    ])
   ]);
+}
+
+// ============================================================
+// Ajustes
+// ============================================================
+// No hay una quinta pestaña: con cuatro destinos la barra de abajo da
+// blancos de 97px y con cinco empieza a tocarse el vecino. Ajustes se
+// entra desde Hoy, que es la pantalla que se abre todos los días.
+function vistaPerfil() {
+  marcarNav('ajustes');
+
+  const nombre = el('div', { class: 'color-nombre', text: acentoActual().nombre });
+  const colores = el('div', { class: 'colores', role: 'group', 'aria-label': 'Color de la app' });
+
+  for (const a of ACENTOS) {
+    colores.append(el('button', {
+      class: 'color',
+      // El relleno y el tilde son del propio acento: la muestra es el
+      // color haciendo exactamente lo que va a hacer en la app.
+      style: `background:${a.relleno};color:${a.sobre}`,
+      title: a.nombre,
+      'aria-label': a.nombre,
+      'aria-pressed': String(a.id === acentoActual().id),
+      onclick: (ev) => {
+        [...colores.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
+        ev.currentTarget.setAttribute('aria-pressed', 'true');
+        prefs.guardar('acento', a.id);
+        aplicarAcento();
+        nombre.textContent = a.nombre;
+      }
+    }, [el('span', { text: '✓', 'aria-hidden': 'true' })]));
+  }
+
+  pintar(
+    el('p', { class: 'paso', text: 'Ajustes' }),
+    el('h1', { text: 'Tu Frontera' }),
+
+    el('div', { class: 'grupo' }, [
+      el('p', { class: 'etiqueta', text: 'Color' }),
+      colores,
+      nombre
+    ]),
+
+    el('div', { class: 'grupo' }, [
+      el('p', { class: 'etiqueta', text: 'Lectura' }),
+      panelAjustes({ enLinea: true }),
+      el('p', { class: 'ayuda', text: 'El fondo vale mientras leés: afuera la app sigue el modo del sistema. Acá lo ves aplicado para que elijas mirándolo.' })
+    ]),
+
+    el('div', { class: 'grupo' }, [
+      el('p', { class: 'etiqueta', text: 'Cuenta' }),
+      mail ? el('p', { class: 'cuenta-mail', text: mail }) : null,
+      el('button', { class: 'link', text: 'Salir de la cuenta', onclick: salir })
+    ])
+  );
+
+  // Acá sí se previsualiza el fondo de lectura: elegir sepia sin ver
+  // nada cambiar es elegir a ciegas.
+  aplicarTemaLectura();
 }
 
 // La semana como una fila de días, no como un número en una esquina.
@@ -1751,13 +1862,6 @@ async function vistaMapa() {
   }
 
   nodos.push(el('p', { class: 'fuente', text: 'Un nodo apagado no significa que no sepas: significa que la app todavía no tiene evidencia de que te muevas ahí. La barra sale de lo que hacés; el número verde, de lo que el campo movió este tiempo.' }));
-
-  // Salir vivía arriba a la derecha, el peor píxel del teléfono, con el
-  // mismo peso visual que las cuatro secciones, y es una acción de
-  // frecuencia mensual. El mapa es la pantalla "vos": va acá abajo.
-  nodos.push(el('div', { class: 'pie-mapa' }, [
-    el('button', { class: 'link', text: 'Salir de la cuenta', onclick: salir })
-  ]));
 
   pintar(...nodos);
 }
