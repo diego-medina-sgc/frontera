@@ -15,7 +15,14 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# SQL derivado del publicador (el contenido real vive en db/)
-jobs/salida/*.sql
-jobs/salida/perfil-evidencia.json
-jobs/salida/diario.log
+# Todo lo que escriben los jobs. El contenido real vive en db/ y esto
+# es derivado, asi que no se versiona.
+#
+# Antes se ignoraban tres archivos sueltos y quedaron versionados los
+# otros cinco. Entre ellos, uno con los nombres de las carpetas de
+# trabajo -proyecto A, proyecto B- y otro con el
+# perfil derivado de las conversaciones. Ninguno es secreto, pero son
+# datos de una persona y de una institucion, y el repo no es lugar.
+# Por eso ahora se ignora la carpeta entera y no una lista.
+/jobs/salida/*
+!/jobs/salida/.gitkeep
