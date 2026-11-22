@@ -49,10 +49,9 @@ jobs/    el job local que genera contenido con Claude Code
 
 Proyecto Supabase: `lboyidbtjxjkhwupysks`
 
-> La organización `una institucion` está en plan Pro, donde cada proyecto
-> nuevo cuesta 10 USD/mes. Esta app vive en una organización personal en plan
-> **Free**: proyecto gratis, y sin mezclar datos personales con
-> infraestructura institucional.
+> Esta app vive en una organización personal de Supabase en plan **Free**:
+> proyecto gratis, y sin mezclar datos personales con infraestructura de
+> ninguna institución.
 
 ### 1. Crear las tablas
 
@@ -227,11 +226,6 @@ que una ve y la otra no, suma.
 Misma regla: todo se procesa local, el archivo original no se copia a
 ningún lado y lo único que sube son conteos.
 
-## Acceso de Claude a la base (opcional)
+## Licencia
 
-Mi conexión a Supabase está autorizada solo para la organización de SGC, así
-que no veo este proyecto y no puedo aplicar migraciones ni leer logs desde
-acá. Si reconectás el conector de Supabase (`/mcp`) incluyendo esta
-organización, puedo trabajar la base directo y vos no tenés que pegar SQL a
-mano. Si al reconectar te deja elegir una sola organización, conviene dejar
-la de SGC y seguir con el editor SQL para este proyecto.
+MIT. Ver `LICENSE`.
