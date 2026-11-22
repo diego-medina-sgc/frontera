@@ -196,6 +196,10 @@ function credenciales() {
     const m = linea.match(/^\s*([A-Z_]+)\s*=\s*(.+?)\s*$/);
     if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
   }
+  // Un reto es de una persona. Por defecto es la del .env (Diego); para
+  // alguien del círculo: --perfil <uuid>, que sale de retos-circulo.mjs.
+  const i = process.argv.indexOf('--perfil');
+  if (i !== -1 && process.argv[i + 1]) env.PROFILE_ID = process.argv[i + 1];
   return env.SUPABASE_URL && env.SUPABASE_SECRET_KEY ? env : null;
 }
 

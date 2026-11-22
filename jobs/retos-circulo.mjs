@@ -8,7 +8,8 @@
 //
 // Igual que el original, no escribe el reto: arma el brief para que lo
 // escriba quien tiene criterio (skill reto) y lo deja en jobs/salida/.
-// Después, el reto se inserta en `challenges` con publicar-reto.
+// Después, el reto se publica con:
+//   node jobs/publicar.mjs jobs/salida/reto-circulo-FECHA.json --perfil <profile_id>
 //
 // Regla de privacidad: el brief lleva nodos, números y el resumen de
 // contexto que la persona escribió para esto. NUNCA las instrucciones

@@ -9,6 +9,7 @@
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
+import { setLang, tr } from './i18n.js';
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -31,13 +32,66 @@ let quieroHerramientas = [];
 // ------------------------------------------------------------
 // Utilidades de DOM (nada de innerHTML con texto de la base)
 // ------------------------------------------------------------
+// Atributos que la persona lee. El resto (class, id, type…) no se toca.
+const TEXTO_ATTR = new Set(['placeholder', 'title', 'aria-label', 'alt']);
+
+// Lo que está fijo en index.html no pasa por el(): se traduce una vez
+// cuando se conoce el idioma. Con 'es' no cambia nada.
+function traducirEstatico() {
+  document.documentElement.lang = perfil?.lang === 'en' ? 'en' : 'es';
+  const tocar = (nodo) => {
+    for (const hijo of nodo.childNodes) {
+      if (hijo.nodeType === 3 && hijo.nodeValue.trim()) {
+        const original = hijo.__es ?? hijo.nodeValue.trim();
+        hijo.__es = original;
+        hijo.nodeValue = hijo.nodeValue.replace(hijo.nodeValue.trim(), tr(original));
+      } else if (hijo.nodeType === 1 && hijo.tagName !== 'svg') tocar(hijo);
+    }
+  };
+  for (const id of ['version-nueva', 'nav']) {
+    const n = document.getElementById(id);
+    if (n) tocar(n);
+  }
+  for (const n of document.querySelectorAll('[aria-label]')) {
+    n.__esLabel ??= n.getAttribute('aria-label');
+    n.setAttribute('aria-label', tr(n.__esLabel));
+  }
+  const meta = document.querySelector('meta[name="description"]');
+  if (meta) {
+    meta.__es ??= meta.content;
+    meta.content = tr(meta.__es);
+  }
+}
+
+// Las capas de ejecución por herramienta: en el idioma de la persona y,
+// si esa herramienta todavía no la tiene en ese idioma, en español. Mejor
+// una capa en otro idioma que ninguna.
+async function capasDe(lessonId, herramientasIds) {
+  if (!lessonId || !herramientasIds.length) return [];
+  const idiomas = perfil.lang === 'es' ? ['es'] : [perfil.lang, 'es'];
+  const { data } = await db
+    .from('lesson_contents').select('*')
+    .eq('lesson_id', lessonId).in('lang', idiomas).in('tool_id', herramientasIds);
+  const mejor = new Map();
+  for (const c of data || []) {
+    const previa = mejor.get(c.tool_id);
+    if (!previa || (c.lang === perfil.lang && previa.lang !== perfil.lang)) mejor.set(c.tool_id, c);
+  }
+  return [...mejor.values()];
+}
+
+// El nombre de un nodo del mapa en el idioma de la persona.
+const nombreNodo = (t) => (perfil.lang === 'en' && t.name_en) || t.name_es;
+
 function el(tag, props = {}, hijos = []) {
   const n = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
     if (k === 'class') n.className = v;
-    else if (k === 'text') n.textContent = v;
+    else if (k === 'text') n.textContent = tr(v);
     else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
-    else if (v !== null && v !== undefined) n.setAttribute(k, v);
+    else if (v !== null && v !== undefined) {
+      n.setAttribute(k, TEXTO_ATTR.has(k) ? tr(v) : v);
+    }
   }
   for (const h of [].concat(hijos)) if (h) n.append(h);
   return n;
@@ -99,7 +153,7 @@ function markdown(texto) {
 
     if (t.startsWith(':::')) {
       if (plegable !== null) cerrarPlegable();
-      else { plegable = t.slice(3).trim() || 'Ver la respuesta'; plegableLineas = []; lista = null; }
+      else { plegable = tr(t.slice(3).trim() || 'Ver la respuesta'); plegableLineas = []; lista = null; }
       continue;
     }
 
@@ -491,7 +545,7 @@ function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave
 
     const faltan = Math.round(total * (1 - avance));
     if (elRestante) {
-      elRestante.textContent = avance > 0.99 ? 'Listo' : `Faltan ${Math.max(1, faltan)} min`;
+      elRestante.textContent = tr(avance > 0.99 ? 'Listo' : `Faltan ${Math.max(1, faltan)} min`);
     }
 
     // Umbrales asimétricos: mostrar la barra pide un gesto deliberado
@@ -653,6 +707,8 @@ async function arrancar() {
 
   if (e) return pintar(error('No pude leer tu perfil: ' + e.message));
   perfil = data;
+  setLang(perfil.lang);
+  traducirEstatico();
   sincronizarAcento();
 
   const { data: tools } = await db
@@ -753,7 +809,9 @@ function filaIdioma(idiomas) {
         [...fila.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
         ev.currentTarget.setAttribute('aria-pressed', 'true');
         const { error: e } = await db.from('profiles').update({ lang }).eq('id', perfil.id);
-        if (!e) perfil.lang = lang;
+        // Recargar es lo más simple y lo más seguro: toda la interfaz,
+        // las vistas ya pintadas y lo estático salen de nuevo en el idioma.
+        if (!e) { perfil.lang = lang; location.reload(); }
       }
     }));
   }
@@ -782,7 +840,7 @@ async function vistaPerfil() {
         [...colores.children].forEach(b => b.setAttribute('aria-pressed', 'false'));
         ev.currentTarget.setAttribute('aria-pressed', 'true');
         guardarAcento(a.id);
-        nombre.textContent = a.nombre;
+        nombre.textContent = tr(a.nombre);
       }
     }, [el('span', { text: '✓', 'aria-hidden': 'true' })]));
   }
@@ -836,7 +894,9 @@ async function filaDeLaSemana() {
 
   const hechos = new Set((data || []).map(r => r.day));
   const fila = el('div', { class: 'semana' });
-  const letras = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+  const letras = perfil.lang === 'en'
+    ? ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+    : ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
   for (let i = 0; i < 7; i++) {
     const d = new Date(lunes);
@@ -1281,6 +1341,8 @@ async function guardarPerfil(texto) {
   perfil.level = nivel;
   perfil.personal_instructions = texto;
   perfil.lang = respuestas.idioma === 'en' ? 'en' : 'es';
+  setLang(perfil.lang);
+  traducirEstatico();
   // Sin esto, la primera lección después del onboarding no muestra la capa
   // de la herramienta recién elegida hasta que la persona recargue.
   misHerramientas = [...elegidas.usa];
@@ -1329,9 +1391,7 @@ async function vistaPegarLasTuyas() {
   const usadas = [...elegidas.usa];
   let ayuda = null;
   if (leccion1Id && usadas.length) {
-    const { data: capas } = await db
-      .from('lesson_contents').select('*')
-      .eq('lesson_id', leccion1Id).eq('lang', perfil.lang).in('tool_id', usadas);
+    const capas = await capasDe(leccion1Id, usadas);
 
     if (capas?.length) {
       ayuda = el('details', { class: 'plegable' });
@@ -1387,9 +1447,9 @@ async function vistaInstrucciones() {
     onclick: async (ev) => {
       try {
         await navigator.clipboard.writeText(texto);
-        ev.currentTarget.textContent = 'Copiado ✓';
+        ev.currentTarget.textContent = tr('Copiado ✓');
       } catch {
-        ev.currentTarget.textContent = 'Copialo a mano del cuadro de arriba';
+        ev.currentTarget.textContent = tr('Copialo a mano del cuadro de arriba');
       }
     }
   });
@@ -1412,13 +1472,7 @@ async function vistaDondePegar() {
     .from('lessons').select('id').eq('slug', 'f01-instrucciones-personales').single();
   leccion1Id = lec?.id ?? null;
 
-  let capas = [];
-  if (lec && usadas.length) {
-    const { data } = await db
-      .from('lesson_contents').select('*')
-      .eq('lesson_id', lec.id).eq('lang', 'es').in('tool_id', usadas);
-    capas = data || [];
-  }
+  const capas = lec ? await capasDe(lec.id, usadas) : [];
 
   const nodos = [
     el('p', { class: 'paso', text: 'Dónde va' }),
@@ -1837,18 +1891,11 @@ async function vistaLeccion(lessonId, cont, repasoId = null) {
   // ninguna y la lección conceptual se sostiene sola.
   // Las que usa y, detrás, las que dijo que le gustaría aprender.
   const pedidas = [...misHerramientas, ...quieroHerramientas];
-  let capas = [];
-  if (pedidas.length) {
-    const { data } = await db
-      .from('lesson_contents').select('*')
-      .eq('lesson_id', lessonId).eq('lang', perfil.lang).in('tool_id', pedidas);
-
-    // Primero las que usa de verdad: lo que puede hacer hoy va antes
-    // que lo que podría hacer algún día.
-    capas = (data || []).sort((a, b) =>
-      Number(quieroHerramientas.includes(a.tool_id)) - Number(quieroHerramientas.includes(b.tool_id))
-    );
-  }
+  // Primero las que usa de verdad: lo que puede hacer hoy va antes
+  // que lo que podría hacer algún día.
+  const capas = (await capasDe(lessonId, pedidas)).sort((a, b) =>
+    Number(quieroHerramientas.includes(a.tool_id)) - Number(quieroHerramientas.includes(b.tool_id))
+  );
 
   const guardar = async (status, v = {}) => {
     await db.from('lesson_state').upsert({
@@ -2236,7 +2283,7 @@ async function vistaReto(reto) {
 // ============================================================
 async function vistaMapa() {
   const [{ data: topics }, { data: dominios }, { data: hechas }, { data: senales }] = await Promise.all([
-    db.from('topics').select('id, slug, name_es, kind, level_floor, sort').order('sort'),
+    db.from('topics').select('id, slug, name_es, name_en, kind, level_floor, sort').order('sort'),
     db.from('topic_mastery').select('topic_id, mastery, evidence').eq('profile_id', perfil.id),
     db.from('lesson_state').select('lesson_id, status').eq('profile_id', perfil.id).not('answered_at', 'is', null),
     db.from('signals').select('topic_id').eq('status', 'promovida')
@@ -2293,7 +2340,9 @@ async function vistaMapa() {
   if (frontera) {
     nodos.push(el('div', { class: 'destacado' }, [
       el('span', { class: 'punto', text: 'Tu frontera' }),
-      el('span', { text: `${frontera.name_es} — donde más se mueve el campo y menos te movés vos.` })
+      el('span', { text: perfil.lang === 'en'
+        ? `${nombreNodo(frontera)} — where the field moves most and you move least.`
+        : `${frontera.name_es} — donde más se mueve el campo y menos te movés vos.` })
     ]));
   }
 
@@ -2314,7 +2363,7 @@ async function vistaMapa() {
       const fuera = t.level_floor > perfil.level;
 
       const fila = el('div', { class: 'nodo' + (fuera ? ' nodo-lejos' : '') });
-      fila.append(el('div', { class: 'nodo-nombre', text: t.name_es }));
+      fila.append(el('div', { class: 'nodo-nombre', text: nombreNodo(t) }));
 
       const barra = el('div', { class: 'barra' });
       barra.append(el('div', { class: 'barra-llena', style: `width:${valor}%` }));
