@@ -1156,6 +1156,26 @@ body:has(#version-nueva:not([hidden])) .volviste {
 .plegable .tarjeta { background: color-mix(in srgb, var(--texto) 4%, var(--tarjeta)); }
 .plegable > p:last-child { padding-bottom: 12px; }
 
+/* Dentro de un articulo el plegable es el momento de recuperacion: la
+   persona tiene que contestar antes de abrirlo. Por eso se ve como un
+   boton y no como un parrafo mas. */
+article .plegable {
+  font-family: var(--ui);
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 1.6em 0;
+  padding: 2px 18px;
+}
+
+article .plegable summary {
+  font-family: var(--ui);
+  font-weight: 600;
+  color: var(--marca);
+}
+
+article .plegable p { margin: 0 0 .9em; }
+article .plegable p:first-of-type { margin-top: 2px; }
+
 /* ---------- avisos ---------- */
 .aviso {
   background: var(--tarjeta);

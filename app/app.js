@@ -59,6 +59,25 @@ function markdown(texto) {
 
   let tipoLista = null;
 
+  // Bloque plegable: ":::Ver la respuesta" abre y ":::" cierra.
+  //
+  // Existe por una razón de aprendizaje y no de estilo. Una pregunta
+  // con la respuesta dos renglones abajo no es una pregunta: el ojo la
+  // lee antes de que el cerebro intente contestar, y leer la respuesta
+  // se siente igual que haberla sabido. Escondida, hay un momento en
+  // el que la persona tiene que producirla, que es donde se aprende.
+  let plegable = null;
+  let plegableLineas = null;
+
+  const cerrarPlegable = () => {
+    if (plegable === null) return;
+    const det = el('details', { class: 'plegable' }, [el('summary', { text: plegable })]);
+    det.append(markdown(plegableLineas.join('\n')));
+    cont.append(det);
+    plegable = null;
+    plegableLineas = null;
+  };
+
   // **negrita** primero y, dentro de lo que no quedó en negrita,
   // *itálica*. Sin la itálica, siete pasajes del contenido ya
   // publicado mostraban los asteriscos crudos: títulos de libros,
@@ -77,6 +96,14 @@ function markdown(texto) {
 
   for (const linea of texto.split('\n')) {
     const t = linea.trim();
+
+    if (t.startsWith(':::')) {
+      if (plegable !== null) cerrarPlegable();
+      else { plegable = t.slice(3).trim() || 'Ver la respuesta'; plegableLineas = []; lista = null; }
+      continue;
+    }
+
+    if (plegable !== null) { plegableLineas.push(linea); continue; }
 
     // Listas con guion y listas numeradas. Las numeradas salían como
     // párrafos sueltos con el "1." adentro.
@@ -103,6 +130,9 @@ function markdown(texto) {
     enriquecer(t, p);
     cont.append(p);
   }
+  // Un bloque sin cerrar no se pierde: se dibuja igual.
+  cerrarPlegable();
+
   return cont;
 }
 
