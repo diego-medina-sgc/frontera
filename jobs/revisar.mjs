@@ -58,7 +58,7 @@ const [
   traer('topics?select=id,slug,name_es,kind,level_floor,terms'),
   traer('lessons?select=id,slug,kind,topic_id,level_floor,level_ceiling,track_order,published'),
   traer('lesson_contents?select=id,lesson_id,lang,tool_id,title,body_md,minutes'),
-  traer('books?select=id,slug,title'),
+  traer('books?select=id,slug,title,themes'),
   traer('book_pieces?select=id,book_id,lang,for_read_state,idx,title,body_md'),
   traer('profiles?select=id,level,level_source,onboarded_at,lang,interest_topics'),
   traer('lesson_state?select=profile_id,lesson_id,status,comprension,answered_at'),
@@ -270,7 +270,15 @@ for (const p of perfiles) {
   if (fantasmas.length) falla('Intereses apuntando a nodos que no existen', `${p.id.slice(0, 8)}: ${fantasmas.length}`);
 }
 
-// 21. Un reto marcado como hecho sin dificultad es una señal perdida:
+// 21. Un libro sin temas no entra nunca al ruteo de la biblioteca: no
+//     se puede ordenar por lo que te gustó ni sugerir después de él.
+for (const b of libros) {
+  if (!Array.isArray(b.themes) || !b.themes.length) {
+    falla('Libro sin temas', `${b.title} (queda fuera del orden y de las sugerencias)`);
+  }
+}
+
+// 22. Un reto marcado como hecho sin dificultad es una señal perdida:
 //     la persona trabajó media hora y el calibre del próximo queda a
 //     ciegas. No es falla —se puede cerrar sin contestar, las salidas
 //     están siempre visibles— pero hay que saberlo.

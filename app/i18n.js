@@ -264,6 +264,7 @@ const EN = {
   'Dejarlo para después': "Save it for later",
 
   // ---- Biblioteca ----
+  'Esto te pegó. Si querés seguir por acá:': "This one landed. If you want to keep going this way:",
   'No lo leí': "I haven't read it",
   'Las ideas centrales, y qué envejeció mal': "The core ideas, and what has aged badly",
   'Lo leí hace tiempo': "I read it a while ago",

@@ -2248,6 +2248,94 @@ function tapaLibro(libro) {
   });
 }
 
+// ------------------------------------------------------------
+// El pulgar de los libros
+// ------------------------------------------------------------
+// Cada pieza se cierra con los mismos dos clics que una lección, y de
+// `book_piece_state` sólo se leía `piece_id`, para saber cuáles ya
+// habías contestado. El pulgar y la comprensión se guardaban y no los
+// leía nadie: dos señales más, del mismo tipo que las que encontraron
+// las auditorías.
+//
+// El puntaje es por TEMA y no por libro, porque el libro que te gustó
+// ya lo leíste: lo que sirve para lo que viene es qué temas te pegaron.
+// Mismo umbral que el pulgar de las lecciones —3 netos abajo apagan el
+// tema y un pulgar arriba lo revierte— para no inventar un número
+// nuevo para la misma idea.
+const TEMA_APAGADO = -3;
+
+async function señalDeLibros(libros, estadosPorLibro) {
+  const [{ data: contestadas }, { data: piezas }] = await Promise.all([
+    db.from('book_piece_state').select('piece_id, interes').eq('profile_id', perfil.id),
+    db.from('book_pieces').select('id, book_id, for_read_state').eq('lang', perfil.lang)
+  ]);
+
+  const porPieza = Object.fromEntries((piezas || []).map(p => [p.id, p]));
+  const temasDe = Object.fromEntries((libros || []).map(l => [l.id, l.themes || []]));
+
+  const hechas = new Set();
+  const porTema = {};
+  for (const c of contestadas || []) {
+    hechas.add(c.piece_id);
+    const p = porPieza[c.piece_id];
+    if (!p || !c.interes) continue;
+    for (const t of temasDe[p.book_id] || []) porTema[t] = (porTema[t] || 0) + c.interes;
+  }
+
+  // Un libro está agotado cuando no le queda ninguna pieza sin
+  // contestar para el estado de lectura que la persona declaró. No es
+  // lo mismo que leído: si cambia el estado, vuelve a tener piezas.
+  const agotados = new Set();
+  for (const l of libros || []) {
+    const estado = estadosPorLibro[l.id]?.read_state;
+    if (!estado) continue;
+    const suyas = (piezas || []).filter(p => p.book_id === l.id && p.for_read_state === estado);
+    if (suyas.length && suyas.every(p => hechas.has(p.id))) agotados.add(l.id);
+  }
+
+  const apagados = new Set(
+    Object.entries(porTema).filter(([, n]) => n <= TEMA_APAGADO).map(([t]) => t)
+  );
+
+  const puntaje = (l) => (l.themes || [])
+    .reduce((s, t) => s + (apagados.has(t) ? 0 : (porTema[t] || 0)), 0);
+
+  const apagado = (l) => (l.themes || []).length > 0 && (l.themes || []).every(t => apagados.has(t));
+
+  return { hechas, porTema, agotados, apagados, puntaje, apagado };
+}
+
+// El orden de la biblioteca: arriba lo que no agotaste y cuyos temas te
+// pegaron, después el resto, al final lo agotado y lo que apagaste. No
+// saca nada de la lista: la biblioteca sigue entera.
+function ordenarLibros(libros, señal) {
+  const rango = (l) => (señal.apagado(l) ? 3 : señal.agotados.has(l.id) ? 2 : señal.puntaje(l) > 0 ? 0 : 1);
+  return [...(libros || [])].sort((a, b) =>
+    rango(a) - rango(b) || señal.puntaje(b) - señal.puntaje(a) || a.title.localeCompare(b.title));
+}
+
+// El otro libro: el que más temas comparte con éste, sin agotar y sin
+// apagar. Devuelve uno o ninguno, nunca una lista: una cola de libros
+// sugeridos es la carpeta de newsletters que nadie abre, que es
+// exactamente lo que esta app promete no ser.
+function elegirSugerencia(libro, libros, señal) {
+  const comparten = (l) => (l.themes || []).filter(t => (libro.themes || []).includes(t)).length;
+
+  return (libros || [])
+    .filter(l => l.id !== libro.id && !señal.agotados.has(l.id) && !señal.apagado(l) && comparten(l) > 0)
+    .sort((a, b) => comparten(b) - comparten(a) || señal.puntaje(b) - señal.puntaje(a) || a.title.localeCompare(b.title))[0] || null;
+}
+
+// Es una sugerencia, no una cola: aparece cuando terminaste algo que te
+// gustó y si no la tomás no queda nada pendiente.
+async function otroLibroComo(libro) {
+  const { data: libros } = await db.from('books').select('*').order('title');
+  const { data: estados } = await db.from('book_state').select('*').eq('profile_id', perfil.id);
+  const porLibro = Object.fromEntries((estados || []).map(e => [e.book_id, e]));
+  const señal = await señalDeLibros(libros, porLibro);
+  return elegirSugerencia(libro, libros, señal);
+}
+
 async function vistaBiblioteca() {
   const { data: libros } = await db.from('books').select('*').order('title');
   const { data: estados } = await db.from('book_state').select('*').eq('profile_id', perfil.id);
@@ -2258,7 +2346,10 @@ async function vistaBiblioteca() {
     el('p', { class: 'bajada', text: 'Lo que no caduca. Elegí un libro y decime si lo leíste: según eso cambia por completo lo que te muestro.' })
   ];
 
-  for (const libro of libros || []) {
+  // El orden deja de ser alfabético y pasa a decir algo.
+  const ordenados = ordenarLibros(libros, await señalDeLibros(libros, porLibro));
+
+  for (const libro of ordenados) {
     const est = porLibro[libro.id];
     const mostrado = tituloLibro(libro);
 
@@ -2334,7 +2425,7 @@ async function vistaLibro(libro, estado) {
     .order('idx');
 
   const { data: hechas } = await db
-    .from('book_piece_state').select('piece_id').eq('profile_id', perfil.id);
+    .from('book_piece_state').select('piece_id, interes').eq('profile_id', perfil.id);
   const ya = new Set((hechas || []).map(r => r.piece_id));
 
   const nodos = [
@@ -2359,6 +2450,28 @@ async function vistaLibro(libro, estado) {
       el('span', { class: 'titulo', text: p.title }),
       el('span', { class: 'autor', text: ya.has(p.id) ? 'Leída' : `${p.minutes} minutos` })
     ]));
+  }
+
+  // Terminaste las piezas de este libro y el pulgar dio positivo: ése
+  // es el único momento en que una sugerencia no es ruido. Aparece acá,
+  // no en Hoy, y no deja nada agendado.
+  const terminado = piezas.every(p => ya.has(p.id));
+  const neto = (hechas || [])
+    .filter(h => piezas.some(p => p.id === h.piece_id))
+    .reduce((s, h) => s + (h.interes || 0), 0);
+
+  if (terminado && neto > 0) {
+    const otro = await otroLibroComo(libro);
+    if (otro) {
+      nodos.push(el('p', { class: 'aviso', text: 'Esto te pegó. Si querés seguir por acá:' }));
+      nodos.push(el('button', { class: 'tarjeta libro', onclick: () => abrirLibro(otro) }, [
+        el('span', { class: 'libro-texto' }, [
+          el('span', { class: 'titulo', text: tituloLibro(otro) }),
+          el('span', { class: 'autor', text: otro.author })
+        ]),
+        tapaLibro(otro)
+      ]));
+    }
   }
 
   nodos.push(el('button', { class: 'link', text: 'Cambiar si lo leí o no', onclick: () => vistaEstadoLibro(libro, true) }));
