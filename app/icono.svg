@@ -1,12 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Frontera">
-  <!-- La frontera: el piso de lo conocido, la subida, y el punto que
-       todavia no alcanzaste. El punto va separado a proposito: es lo
-       que falta, no lo que ya hiciste.
-       Tres puntos y no cinco: a 48 pixeles, cinco es una mancha. -->
+  <!-- Una F de dos piezas. El cuerpo va en blanco; la barra de arriba
+       va suelta y en verde, porque es la que cruzó: es lo único con
+       color y es lo que hay que mirar. Llega más a la derecha que el
+       brazo del medio y sobresale del cuerpo para los dos lados.
+
+       Los cortes son todos diagonales y para el mismo lado —la barra,
+       el final del brazo y la punta de abajo—: de ahí sale el aire
+       angular, sin encastres ni huecos finos, que a 32 píxeles se
+       cierran y convierten el dibujo en una mancha.
+
+       El hueco entre las dos piezas son 26 unidades: a 32 píxeles
+       todavía se ve, que es la prueba que importa. -->
   <rect width="512" height="512" rx="112" fill="#15161a"/>
-  <path d="M112 392 H400" stroke="#3a4030" stroke-width="18" stroke-linecap="round"/>
-  <path d="M112 344 L236 292 L352 184"
-        fill="none" stroke="#d7f24b" stroke-width="36"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="412" cy="140" r="42" fill="#d7f24b"/>
+  <path d="M160 120 L420 120 L398 182 L138 182 Z" fill="#d7f24b"/>
+  <path d="M160 208 L225 208 L225 250 L345 250 L323 312 L225 312 L225 370 L160 400 Z" fill="#ffffff"/>
 </svg>

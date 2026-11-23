@@ -13,15 +13,17 @@ Add-Type -AssemblyName System.Drawing
 
 $destino = Join-Path $PSScriptRoot 'app'
 
-$negro = [System.Drawing.ColorTranslator]::FromHtml('#15161a')
-$lima  = [System.Drawing.ColorTranslator]::FromHtml('#d7f24b')
-$piso  = [System.Drawing.ColorTranslator]::FromHtml('#3a4030')
+$negro  = [System.Drawing.ColorTranslator]::FromHtml('#15161a')
+$lima   = [System.Drawing.ColorTranslator]::FromHtml('#d7f24b')
+$blanco = [System.Drawing.ColorTranslator]::FromHtml('#ffffff')
 
-# El centro real del dibujo, trazos incluidos, que no es el centro de
-# la caja: el punto empuja todo hacia arriba y a la derecha. Centrar la
-# caja en vez del dibujo es lo que dejaba el icono corrido.
-$centroX = 274.0
-$centroY = 249.5
+# El centro real del dibujo, que no es el centro de la caja: la barra
+# suelta se va a la derecha y arriba. Centrar la caja en vez del dibujo
+# es lo que dejaba el icono corrido.
+#   barra:  x 138..420   y 120..182
+#   cuerpo: x 160..345   y 208..400
+$centroX = 279.0
+$centroY = 260.0
 
 function New-Icono {
     param(
@@ -74,27 +76,23 @@ function New-Icono {
         )
     }
 
-    $lapizPiso = New-Object System.Drawing.Pen $piso, ([float](18 * $escala))
-    $lapizPiso.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $lapizPiso.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $g.DrawLine($lapizPiso, (P 112 392), (P 400 392))
+    # Las mismas dos piezas que el SVG, en el mismo orden.
 
-    $lapizLinea = New-Object System.Drawing.Pen $lima, ([float](36 * $escala))
-    $lapizLinea.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $lapizLinea.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-    $lapizLinea.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-    $g.DrawLines($lapizLinea, @((P 112 344), (P 236 292), (P 352 184)))
+    # La barra suelta: la que cruzo. Es lo unico en verde.
+    $pincelLima = New-Object System.Drawing.SolidBrush $lima
+    $g.FillPolygon($pincelLima, @((P 160 120), (P 420 120), (P 398 182), (P 138 182)))
 
-    $pincelPunto = New-Object System.Drawing.SolidBrush $lima
-    $radio = 42 * $escala
-    $centro = P 412 140
-    $g.FillEllipse($pincelPunto, [float]($centro.X - $radio), [float]($centro.Y - $radio),
-                   [float]($radio * 2), [float]($radio * 2))
+    # El cuerpo de la F.
+    $pincelBlanco = New-Object System.Drawing.SolidBrush $blanco
+    $g.FillPolygon($pincelBlanco, @(
+        (P 160 208), (P 225 208), (P 225 250), (P 345 250),
+        (P 323 312), (P 225 312), (P 225 370), (P 160 400)
+    ))
 
     $ruta = Join-Path $destino $Archivo
     $bmp.Save($ruta, [System.Drawing.Imaging.ImageFormat]::Png)
 
-    $lapizPiso.Dispose(); $lapizLinea.Dispose(); $pincelPunto.Dispose()
+    $pincelLima.Dispose(); $pincelBlanco.Dispose()
     $fondo.Dispose(); $g.Dispose(); $bmp.Dispose()
 
     $kb = [math]::Round((Get-Item $ruta).Length / 1KB, 1)
@@ -109,8 +107,8 @@ New-Icono -Tamano 192 -Archivo 'icono-192.png'
 New-Icono -Tamano 512 -Archivo 'icono-512.png'
 
 # Android maskable: a sangre y con aire, porque recorta en circulo. El
-# 0.80 deja la diagonal del dibujo (376) adentro del circulo seguro
-# del 80% del lado (410).
+# 0.80 deja la diagonal del dibujo (397, de 282 x 280) adentro del
+# circulo seguro del 80% del lado (410).
 New-Icono -Tamano 512 -Archivo 'icono-512-maskable.png' -Sangre $true -Ocupa 0.80
 
 Write-Host "Listo."
