@@ -600,6 +600,19 @@ article ::selection {
   color: var(--texto);
 }
 
+/* La negrita del texto que se lee toma el color de la persona.
+   Invierte la regla vieja —"nada de acento dentro del texto que se
+   lee"— a pedido de Diego el 23/11. La condición que puso, y que acá
+   se cumple sola, es el contraste: `--marca` no es el relleno del
+   acento sino su versión medida como texto, distinta en claro y en
+   oscuro. Las seis pasan 4,5:1 sobre los tres fondos; la más justa es
+   lima sobre sepia, 5,11:1.
+
+   El peso sigue haciendo el trabajo pesado: el color se suma a la
+   negrita, no la reemplaza. Los subtítulos quedan en tinta a propósito,
+   así la jerarquía no se le escapa al color. */
+article strong { color: var(--marca); }
+
 :root[data-tema="oscuro"] article strong { letter-spacing: .006em; }
 
 /* Panel de ajustes: hoja de abajo. Antes vivía arriba del título y
