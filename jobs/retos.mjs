@@ -16,6 +16,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from '
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
+import { calibrar } from './calibre.mjs';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const HOY = new Date().toISOString().slice(0, 10);
@@ -63,6 +64,45 @@ function proyectos() {
 const material = proyectos();
 const hueco = perfil.huecos[0];
 
+// ------------------------------------------------------------
+// Cómo le fue con el anterior
+// ------------------------------------------------------------
+// Los dos clics del cierre de un reto (dificultad y sirvió) se
+// guardaban y no los leía nadie. Calibran el que viene: la regla está
+// en calibre.mjs.
+//
+// Esto es lo único de este job que necesita la base. Si no contesta, el
+// brief sale igual sin calibre: un reto sin escribir es peor que un
+// reto sin calibrar.
+const env = {};
+const rutaEnv = join(AQUI, '.env');
+if (existsSync(rutaEnv)) {
+  for (const linea of readFileSync(rutaEnv, 'utf8').split('\n')) {
+    const m = linea.match(/^\s*([A-Z_]+)\s*=\s*(.+?)\s*$/);
+    if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
+
+let ultimo = null;
+if (env.SUPABASE_URL && env.SUPABASE_SECRET_KEY && env.PROFILE_ID) {
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/challenges?profile_id=eq.${env.PROFILE_ID}`
+      + '&answered_at=not.is.null&select=dificultad,sirvio,answered_at'
+      + '&order=answered_at.desc&limit=1',
+      {
+        headers: {
+          apikey: env.SUPABASE_SECRET_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`
+        }
+      }
+    );
+    if (r.ok) ultimo = (await r.json())[0] || null;
+  } catch { /* el brief sale sin calibre */ }
+}
+
+const calibre = calibrar(ultimo);
+
 const brief = {
   fecha: HOY,
   hueco: {
@@ -75,8 +115,13 @@ const brief = {
   como_trabaja: perfil.modos,
   material_reciente: material,
   fuertes: perfil.dominio.slice(0, 3).map(d => d.nodo),
+  anterior: ultimo
+    ? { dificultad: ultimo.dificultad, sirvio: ultimo.sirvio, cerrado: ultimo.answered_at?.slice(0, 10) || null }
+    : null,
+  calibre,
   instrucciones: [
     'El hueco elige el TEMA. El material lo hace PROPIO. Ninguno de los dos solo.',
+    `Calibre: ${calibre}.`,
     'El reto tiene que hacerse sobre algo que la persona ya tiene entre manos, no sobre un ejemplo.',
     'Entre 15 y 30 minutos. Si no entra en una sentada, no es un reto: es un proyecto.',
     'Pasos numerados y concretos. Cada paso tiene que terminar en algo observable.',
@@ -91,6 +136,7 @@ writeFileSync(join(AQUI, 'salida', `brief-reto-${HOY}.json`), JSON.stringify(bri
 
 console.log(`Hueco elegido: ${hueco.nodo} (dominio ${hueco.valor}, en ${hueco.proyectos} proyectos)`);
 console.log(`Nivel: ${perfil.nivel_sugerido}`);
+console.log(`Calibre: ${calibre}`);
 console.log('\nMaterial reciente:');
 for (const m of material) console.log(`  · ${m.nombre} — ${m.sesiones} sesiones, última el ${m.ultima}`);
 console.log(`\nOtros huecos: ${perfil.huecos.slice(1).map(h => `${h.nodo} (${h.valor})`).join(', ') || 'ninguno'}`);

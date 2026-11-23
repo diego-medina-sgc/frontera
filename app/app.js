@@ -819,6 +819,109 @@ function filaIdioma(idiomas) {
   return el('div', { class: 'ajustes ajustes-suelto' }, [fila]);
 }
 
+// ------------------------------------------------------------
+// Vos: las dos cosas que la app sabe de vos y que no podías ni ver
+// ------------------------------------------------------------
+// `personal_instructions` y `context_summary` se escribían una vez en
+// el Paso 1 y no se volvían a tocar nunca más.
+//
+// El texto de instrucciones es el primer entregable de la app, lo que
+// la persona se lleva y pega en su herramienta. Después del onboarding
+// era inalcanzable: si no lo copiaste en el momento, no había pantalla
+// en la app que te lo mostrara de nuevo.
+//
+// El contexto es peor, porque decide: sobre él se arma cada reto y,
+// desde la migración 050, de qué lado se le traen las lecciones de
+// frontera. Alguien que cambiaba de trabajo quedaba con el contexto de
+// otra vida y sin forma de corregirlo. Editarlo acá recalcula los
+// intereses en el acto, así que lo que escribe cambia lo que recibe.
+function grupoVos() {
+  const contexto = el('textarea', {
+    id: 'contexto',
+    rows: '4',
+    placeholder: 'A qué te dedicás, con quién trabajás y para qué usás la IA.'
+  });
+  contexto.value = perfil.context_summary || '';
+
+  const texto = el('textarea', {
+    id: 'mis-instrucciones',
+    rows: '10',
+    placeholder: 'Si tenés tus instrucciones en otro lado, pegalas acá para tenerlas a mano.'
+  });
+  texto.value = perfil.personal_instructions || '';
+
+  const dicho = el('p', { class: 'ayuda' });
+
+  const copiar = el('button', {
+    class: 'link',
+    text: 'Copiar las instrucciones',
+    onclick: async (ev) => {
+      if (!texto.value.trim()) return;
+      try {
+        await navigator.clipboard.writeText(texto.value);
+        ev.currentTarget.textContent = tr('Copiado ✓');
+      } catch {
+        ev.currentTarget.textContent = tr('Copialo a mano del cuadro');
+      }
+    }
+  });
+
+  const guardar = el('button', {
+    class: 'primario',
+    text: 'Guardar',
+    onclick: async (ev) => {
+      const boton = ev.currentTarget;
+      const nuevoContexto = contexto.value.trim() || null;
+      const nuevoTexto = texto.value.trim() || null;
+
+      boton.disabled = true;
+      dicho.textContent = tr('Guardando…');
+
+      const intereses = await calcularIntereses([nuevoContexto]);
+      const { error: e } = await db.from('profiles').update({
+        context_summary: nuevoContexto,
+        personal_instructions: nuevoTexto,
+        interest_topics: intereses
+      }).eq('id', perfil.id);
+
+      boton.disabled = false;
+      if (e) {
+        dicho.textContent = tr('No se pudo guardar. Probá de nuevo.');
+        return;
+      }
+
+      perfil.context_summary = nuevoContexto;
+      perfil.personal_instructions = nuevoTexto;
+      perfil.interest_topics = intereses;
+      dicho.textContent = tr('Guardado ✓');
+    }
+  });
+
+  return el('div', { class: 'grupo' }, [
+    el('p', { class: 'etiqueta', text: 'Vos' }),
+
+    el('label', { for: 'contexto', text: 'Tu contexto' }),
+    el('p', { class: 'ayuda', text: 'Es lo que usa la app para elegir de qué lado traerte las cosas y sobre qué armarte un reto. Si cambiaste de trabajo, cambialo acá.' }),
+    contexto,
+
+    el('div', { style: 'height:18px' }),
+
+    el('label', { for: 'mis-instrucciones', text: 'Tus instrucciones' }),
+    el('p', {
+      class: 'ayuda',
+      text: perfil.personal_instructions
+        ? 'El texto que armamos en el Paso 1. Es tuyo: copialo cuando lo necesites.'
+        : 'Acá no hay nada porque ya tenías las tuyas armadas. Si querés tenerlas a mano, pegalas.'
+    }),
+    texto,
+    copiar,
+
+    el('div', { style: 'height:18px' }),
+    guardar,
+    dicho
+  ]);
+}
+
 async function vistaPerfil() {
   marcarNav('ajustes');
 
@@ -868,6 +971,8 @@ async function vistaPerfil() {
         ? el('p', { class: 'ayuda', text: 'Por ahora todo el contenido está en español. Cuando haya en otro idioma, va a aparecer acá.' })
         : null
     ]),
+
+    grupoVos(),
 
     el('div', { class: 'grupo' }, [
       el('p', { class: 'etiqueta', text: 'Cuenta' }),
@@ -935,7 +1040,7 @@ async function filaDeLaSemana() {
 //
 // "Ya lo sabía" y "entendí todo" son la misma señal dicha de dos
 // maneras distintas: esto que me estás dando me queda abajo.
-const ASCENSO = { contestadas: 5, señales: 3 };
+const ASCENSO = { contestadas: 5, señales: 3, retoFacil: 4 };
 
 let ascendio = false;
 
@@ -963,7 +1068,25 @@ async function revisarAscenso() {
   const señales = aNivel.filter(
     e => e.status === 'ya_la_sabia' || (e.comprension ?? 0) >= 8
   ).length;
-  if (señales < ASCENSO.señales) return;
+
+  // `dificultad` era de las señales que la app pedía y no usaba, y es
+  // la más cara de conseguir: media hora de trabajo propio, no un
+  // clic. Un reto que cerró y le resultó fácil dice lo mismo que "ya
+  // lo sabía", pero sobre hacer y no sobre leer.
+  //
+  // Vale como UNA señal por más retos fáciles que haya: con un solo
+  // reto abierto por persona a la vez, dos retos son semanas, y el
+  // ascenso tiene que seguir apoyado en lo que contestó.
+  const { data: retosFaciles } = await db
+    .from('challenges').select('id')
+    .eq('profile_id', perfil.id)
+    .eq('status', 'hecho')
+    .not('dificultad', 'is', null)
+    .lte('dificultad', ASCENSO.retoFacil)
+    .limit(1);
+
+  const deRetos = (retosFaciles || []).length ? 1 : 0;
+  if (señales + deRetos < ASCENSO.señales) return;
 
   const nuevo = perfil.level + 1;
   const { error: e } = await db.from('profiles').update({
@@ -1293,6 +1416,43 @@ function armarInstrucciones(r) {
   return lineas.join('\n');
 }
 
+// Los nodos que la persona nombró sin saber que los nombraba.
+//
+// `interview_answers` era la señal más caliente que la app recogía y la
+// que menos hacía: tres preguntas abiertas donde alguien escribe, con
+// sus palabras, a qué se dedica y para qué quiere la IA, guardadas para
+// nadie. Esto les da un consumidor.
+//
+// `topics.terms` (migración 050) tiene por nodo las palabras con las
+// que una persona que no es técnica describe su trabajo: "planillas",
+// "repetitivo", "redes", "mails". El cruce es por subcadena y sin
+// pretensión de precisión: un falso positivo sólo cambia el orden de
+// dos lecciones que igual podía leer.
+async function calcularIntereses(textos) {
+  const texto = textos.filter(Boolean).join(' ').toLowerCase();
+  if (!texto.trim()) return [];
+
+  const { data: nodos } = await db.from('topics').select('id, terms');
+  const ids = [];
+  for (const n of nodos || []) {
+    if ((n.terms || []).some(t => t && texto.includes(String(t).toLowerCase()))) ids.push(n.id);
+  }
+  return ids;
+}
+
+// Partición estable: primero las del tema que la persona nombró, y
+// después todas las demás en el orden en que venían. No saca nada de la
+// lista —nadie pierde acceso a una lección por no haber escrito la
+// palabra justa— y si no nombró ningún tema, devuelve lo mismo que
+// entró.
+function primeroLoSuyo(lista, suyos) {
+  if (!suyos || !suyos.length) return lista;
+  const propios = new Set(suyos);
+  const mios = lista.filter(c => c.topic_id && propios.has(c.topic_id));
+  if (!mios.length) return lista;
+  return [...mios, ...lista.filter(c => !c.topic_id || !propios.has(c.topic_id))];
+}
+
 // Guardado común a los tres caminos: respuestas de la entrevista, perfil
 // derivado y herramientas. El context_summary es lo que después permite
 // traducir cada lección al contexto real de la persona.
@@ -1323,9 +1483,13 @@ async function guardarPerfil(texto) {
     await db.from('profile_tools').upsert(filas, { onConflict: 'profile_id,tool_id,relation' });
   }
 
+  const contexto = `${respuestas.rol} ${respuestas.contexto}. Usa IA para: ${respuestas.usos}`;
+  const intereses = await calcularIntereses([respuestas.rol, respuestas.contexto, respuestas.usos]);
+
   await db.from('profiles').update({
     personal_instructions: texto,
-    context_summary: `${respuestas.rol} ${respuestas.contexto}. Usa IA para: ${respuestas.usos}`,
+    context_summary: contexto,
+    interest_topics: intereses,
     level: nivel,
     level_source: fuente,
     level_updated_at: new Date().toISOString(),
@@ -1340,6 +1504,11 @@ async function guardarPerfil(texto) {
 
   perfil.level = nivel;
   perfil.personal_instructions = texto;
+  perfil.context_summary = contexto;
+  // Sin esto, el ruteo por intereses recién empieza a valer en la
+  // segunda sesión: la primera lección después del Paso 1 es
+  // justamente donde más importa.
+  perfil.interest_topics = intereses;
   perfil.lang = respuestas.idioma === 'en' ? 'en' : 'es';
   setLang(perfil.lang);
   traducirEstatico();
@@ -1524,6 +1693,27 @@ function vistaPrueba() {
           answer_before: antes.value.trim() || null,
           answer_after: despues.value.trim() || null
         }, { onConflict: 'profile_id' });
+
+        // `before_after` se guardaba desde el primer día y no lo leía
+        // nadie. Es, de todo lo que la app recoge, la única evidencia de
+        // algo que la persona hizo AFUERA: abrió su herramienta, le
+        // pegó las instrucciones, le hizo la pregunta dos veces y
+        // comparó las respuestas. Eso no es jugar.
+        //
+        // Quien entró declarando "nunca la usé en serio" y llega acá
+        // con las dos respuestas pegadas está operando, y el nivel 0
+        // le iba a dar durante semanas material que ya pasó. El piso
+        // sube a 1. Sube, nunca baja, igual que el resto del motor, y
+        // no se dice como número: al día siguiente simplemente le
+        // llega otra cosa.
+        if (perfil.level === 0 && antes.value.trim() && despues.value.trim()) {
+          const { error: eNivel } = await db.from('profiles').update({
+            level: 1,
+            level_source: 'desempeno',
+            level_updated_at: new Date().toISOString()
+          }).eq('id', perfil.id);
+          if (!eNivel) perfil.level = 1;
+        }
 
         // El Paso 1 ES la lección 1: se marca hecha para no servirla de nuevo
         // al día siguiente como si no hubiera pasado nada.
@@ -1823,9 +2013,21 @@ async function vistaHoy() {
     const { data: candidatas, error: eCand } = await q;
     if (eCand) return pintarFalla();
 
+    // Entre dos lecciones de frontera que puede leer hoy, va primero la
+    // del tema que ella misma puso sobre la mesa en el Paso 1. Es una
+    // partición estable: no saca nada de la lista, cambia el orden.
+    //
+    // Sólo en frontera. En el radar manda la novedad, que es la
+    // promesa de esa sección; en el track manda la escalera, que es
+    // pedagógica. Acá el orden era `created_at desc`, o sea el azar de
+    // cuándo escribí cada una.
+    const lista = kind === 'frontera'
+      ? primeroLoSuyo(candidatas || [], perfil.interest_topics)
+      : (candidatas || []);
+
     // Una lección sin contenido escrito todavía no es un error: simplemente
     // no existe para la persona. Se pasa a la siguiente que sí lo tenga.
-    for (const c of candidatas || []) {
+    for (const c of lista) {
       // El tema apagado por el pulgar no se trae, salvo en el track.
       if (kind !== 'fundamento' && c.topic_id && apagados.has(c.topic_id)) continue;
 
@@ -1870,7 +2072,7 @@ async function vistaHoy() {
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
     el('p', { class: 'ayuda', text: `${cont.minutes} minutos` }),
     el('button', { class: 'primario', onclick: () => vistaLeccion(prox.id, cont), text: 'Leer' }),
-    (await retoAbierto())
+    (await retoAbierto()) && (await empujarReto())
       ? el('button', {
           class: 'link',
           text: 'Tenés un reto esperando',
@@ -2214,6 +2416,26 @@ async function retoAbierto() {
     .order('created_at', { ascending: false })
     .limit(1);
   return (data || [])[0] || null;
+}
+
+// `sirvio` era la otra señal escrita y sin leer: dos clics al cerrar un
+// reto que no cambiaban nada.
+//
+// Dos retos seguidos que no le sirvieron son un dato sobre nosotros, no
+// sobre ella. Hoy deja de empujar el reto —el aviso al pie de la
+// pantalla— y el reto queda en su pestaña, que es donde está si lo
+// quiere. Nada se esconde: se deja de insistir. El generador, además,
+// cambia de nodo (ver jobs/retos-circulo.mjs).
+async function empujarReto() {
+  const { data } = await db
+    .from('challenges').select('sirvio')
+    .eq('profile_id', perfil.id)
+    .not('answered_at', 'is', null)
+    .order('answered_at', { ascending: false })
+    .limit(2);
+
+  const ultimos = data || [];
+  return !(ultimos.length === 2 && ultimos.every(r => r.sirvio === -1));
 }
 
 async function vistaReto(reto) {

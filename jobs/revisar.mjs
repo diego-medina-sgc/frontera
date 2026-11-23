@@ -55,15 +55,15 @@ const [
   topics, lessons, contenidos, libros, piezas,
   perfiles, estados, repasos, retos, senales, estadoLibros
 ] = await Promise.all([
-  traer('topics?select=id,slug,name_es,kind,level_floor'),
+  traer('topics?select=id,slug,name_es,kind,level_floor,terms'),
   traer('lessons?select=id,slug,kind,topic_id,level_floor,level_ceiling,track_order,published'),
   traer('lesson_contents?select=id,lesson_id,lang,tool_id,title,body_md,minutes'),
   traer('books?select=id,slug,title'),
   traer('book_pieces?select=id,book_id,lang,for_read_state,idx,title,body_md'),
-  traer('profiles?select=id,level,level_source,onboarded_at,lang'),
+  traer('profiles?select=id,level,level_source,onboarded_at,lang,interest_topics'),
   traer('lesson_state?select=profile_id,lesson_id,status,comprension,answered_at'),
   traer('reviews?select=id,profile_id,lesson_id,stage,due_on,done_at'),
-  traer('challenges?select=id,profile_id,status,title,body_md,nodo:topic_id'),
+  traer('challenges?select=id,profile_id,status,title,body_md,nodo:topic_id,dificultad,sirvio,answered_at'),
   traer('signals?select=id,status,topic_id,url_hash,title'),
   traer('book_state?select=profile_id,book_id,read_state')
 ]);
@@ -235,6 +235,48 @@ for (const pz of piezas) {
   for (const [re, que] of SIN_SOPORTE) {
     if (re.test(pz.body_md || '')) falla('Sintaxis que la app muestra en crudo', `${pz.title}: ${que}`);
   }
+}
+
+// ------------------------------------------------------------
+// Los cables del motor
+// ------------------------------------------------------------
+// Estos cuatro vigilan las señales que se cablearon después de las dos
+// auditorías. Todas fallaron de la misma manera antes: la app las
+// guardaba, nadie las leía y nada avisaba.
+
+// 18. Un nodo sin términos no puede aparecer nunca en el ruteo por
+//     intereses: lo que la persona escribió en el Paso 1 no lo alcanza.
+//     Es data que tiene que existir (migración 050).
+for (const t of topics) {
+  if (!Array.isArray(t.terms) || !t.terms.length) {
+    falla('Nodo del mapa sin términos', `${t.name_es} (no entra nunca al ruteo por intereses)`);
+  }
+}
+
+// 19. Un perfil con onboarding y sin intereses calculados: el cruce no
+//     corrió. No es que no nombró nada —eso es una lista vacía— es que
+//     nunca se midió.
+for (const p of perfiles.filter(x => x.onboarded_at)) {
+  if (p.interest_topics == null) {
+    falla('Perfil sin intereses calculados', `${p.id.slice(0, 8)} (corré la migración 050)`);
+  }
+}
+
+// 20. Intereses que apuntan a un nodo que ya no existe. Pasa si se
+//     borra un nodo del mapa y no se limpia.
+const idsNodos = new Set(topics.map(t => t.id));
+for (const p of perfiles) {
+  const fantasmas = (p.interest_topics || []).filter(id => !idsNodos.has(id));
+  if (fantasmas.length) falla('Intereses apuntando a nodos que no existen', `${p.id.slice(0, 8)}: ${fantasmas.length}`);
+}
+
+// 21. Un reto marcado como hecho sin dificultad es una señal perdida:
+//     la persona trabajó media hora y el calibre del próximo queda a
+//     ciegas. No es falla —se puede cerrar sin contestar, las salidas
+//     están siempre visibles— pero hay que saberlo.
+const hechosSinDato = retos.filter(r => r.status === 'hecho' && r.dificultad == null);
+if (hechosSinDato.length) {
+  aviso('Retos hechos sin dificultad', `${hechosSinDato.length}: el calibre del próximo va a ciegas`);
 }
 
 // ------------------------------------------------------------

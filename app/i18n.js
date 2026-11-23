@@ -77,6 +77,21 @@ const EN = {
   'Español': "Español",
   'English': "English",
 
+  // ---- Ajustes: Vos ----
+  'Vos': "You",
+  'Tu contexto': "Your context",
+  'Es lo que usa la app para elegir de qué lado traerte las cosas y sobre qué armarte un reto. Si cambiaste de trabajo, cambialo acá.': "It's what the app uses to decide which side to bring things from, and what to build a challenge around. If you've changed jobs, change it here.",
+  'A qué te dedicás, con quién trabajás y para qué usás la IA.': "What you do, who you work with and what you use AI for.",
+  'Si tenés tus instrucciones en otro lado, pegalas acá para tenerlas a mano.': "If your instructions live somewhere else, paste them here to keep them to hand.",
+  'El texto que armamos en el Paso 1. Es tuyo: copialo cuando lo necesites.': "The text we put together in Step 1. It's yours: copy it whenever you need it.",
+  'Acá no hay nada porque ya tenías las tuyas armadas. Si querés tenerlas a mano, pegalas.': "There's nothing here because you already had your own. If you want them to hand, paste them in.",
+  'Copiar las instrucciones': "Copy the instructions",
+  'Copialo a mano del cuadro': "Copy it by hand from the box",
+  'Guardar': "Save",
+  'Guardando…': "Saving…",
+  'Guardado ✓': "Saved ✓",
+  'No se pudo guardar. Probá de nuevo.': "Couldn't save. Try again.",
+
   // ---- Semana ----
   'Esta semana': "This week",
   'L': "M",
