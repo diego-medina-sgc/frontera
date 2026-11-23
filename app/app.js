@@ -702,8 +702,16 @@ async function arrancar() {
   if (!session) return vistaEntrar();
   mail = session.user?.email || null;
 
-  const { data, error: e } = await db
-    .from('profiles').select('*').eq('id', session.user.id).single();
+  // Las tres consultas del arranque no dependen entre sí, y antes se
+  // hacían una después de la otra: 800 ms de pantalla en blanco por
+  // nada. La racha va en el mismo viaje.
+  const [{ data, error: e }, { data: tools }, { data: mias }, { data: racha }] = await Promise.all([
+    db.from('profiles').select('*').eq('id', session.user.id).single(),
+    db.from('tools').select('*').eq('active', true).order('sort'),
+    db.from('profile_tools').select('tool_id, relation')
+      .eq('profile_id', session.user.id).in('relation', ['usa', 'quiere']),
+    db.rpc('racha_semanal', { p_profile: session.user.id })
+  ]);
 
   if (e) return pintar(error('No pude leer tu perfil: ' + e.message));
   perfil = data;
@@ -711,19 +719,14 @@ async function arrancar() {
   traducirEstatico();
   sincronizarAcento();
 
-  const { data: tools } = await db
-    .from('tools').select('*').eq('active', true).order('sort');
   herramientas = tools || [];
-
-  const { data: mias } = await db
-    .from('profile_tools').select('tool_id, relation').eq('profile_id', perfil.id).in('relation', ['usa', 'quiere']);
   misHerramientas = (mias || []).filter(r => r.relation === 'usa').map(r => r.tool_id);
   // La pantalla del Paso 1 promete, textual: "de estas te voy a traer
   // contenido, aunque hoy no las uses". Hasta ahora no lo cumplía
   // nadie: `quiere` se guardaba y no lo leía ni una línea.
   quieroHerramientas = (mias || []).filter(r => r.relation === 'quiere').map(r => r.tool_id);
 
-  await dibujarRacha();
+  semanasSeguidas = racha ?? 0;
 
   // Durante el Paso 1 la navegación no existe: con ella a la vista, un
   // toque en "Hoy" saltea el onboarding entero y la persona termina en una
@@ -731,6 +734,10 @@ async function arrancar() {
   navegacion.hidden = !perfil.onboarded_at;
 
   if (!perfil.onboarded_at) return vistaPaso1();
+
+  // El catálogo se pide ya, sin esperarlo: para cuando Hoy lo necesite,
+  // el viaje está hecho o en camino.
+  catalogo().catch(() => { /* lo reintenta la pantalla */ });
   return vistaHoy();
 }
 
@@ -1992,33 +1999,167 @@ async function vistaCompromiso(c) {
   );
 }
 
+// ============================================================
+// El catálogo
+// ============================================================
+// Las lecciones y su contenido son lo mismo para todo el mundo: es la
+// mitad compartida del modelo. Antes se pedían de a pedacitos y en
+// cadena —una consulta por tipo, y después una por candidata hasta
+// encontrar alguna con contenido escrito—, y cada consulta cuesta unos
+// 270 ms. Eso era casi todo el tiempo que la app tardaba en abrir.
+//
+// Ahora viene entero en un viaje (24 lecciones con su contenido, unos
+// 75 KB) y se guarda mientras dure la sesión. Con eso, el ruteo de Hoy
+// no toca la red y abrir una lección tampoco: el texto ya está.
+//
+// Se guarda la promesa y no los datos, así dos pantallas que arrancan a
+// la vez comparten el mismo viaje en lugar de hacer dos.
+let catalogoPedido = null;
+let catalogoIdioma = null;
+
+function catalogo() {
+  if (catalogoPedido && catalogoIdioma === perfil.lang) return catalogoPedido;
+
+  catalogoIdioma = perfil.lang;
+  catalogoPedido = db.from('lessons')
+    .select('id, slug, kind, topic_id, track_order, created_at, level_floor, level_ceiling, lesson_contents!inner(id, title, hook, body_md, minutes)')
+    .eq('published', true)
+    .eq('lesson_contents.lang', perfil.lang)
+    .is('lesson_contents.tool_id', null)
+    .then(({ data, error: e }) => {
+      // Si falla, se olvida: la próxima pantalla vuelve a intentar en
+      // vez de quedar pegada a un error para toda la sesión.
+      if (e) { catalogoPedido = null; throw e; }
+      return (data || []).map(l => ({ ...l, cont: l.lesson_contents[0] }));
+    });
+
+  return catalogoPedido;
+}
+
+// (Cambiar el idioma recarga la app entera, así que el catálogo
+//  guardado se va solo: no hace falta invalidarlo a mano.)
+
+// El ruteo, sin red: qué le toca hoy a esta persona de todo el
+// catálogo. Es la decisión central de la app, así que vive sola y se
+// puede probar sola.
+//
+// Orden: lo nuevo del mundo primero, después los temas de frontera que
+// no caducan, y al final el track ordenado de fundamentos. El track es
+// el piso, no la agenda.
+//
+// Nada se acumula. El competidor de esta app no es otra app: es la
+// carpeta de newsletters que nadie abre, con la culpa adentro. Por eso
+// una lección de radar que no leíste en diez días desaparece y no deja
+// rastro. No hay pendientes, no hay contador, no hay deuda.
+const DIAS_DEL_RADAR = 10;
+
+function elegirLeccion(lecciones, { hechas, apagados, nivel, intereses }) {
+  const hecha = new Set(hechas || []);
+  const mudos = apagados || new Set();
+  const vence = Date.now() - DIAS_DEL_RADAR * 864e5;
+
+  for (const kind of ['radar', 'frontera', 'fundamento']) {
+    let candidatas = (lecciones || []).filter(l =>
+      l.kind === kind && !hecha.has(l.id) && l.level_floor <= nivel);
+
+    // El techo solo vale para lo perecedero y para la frontera. En el
+    // track no: las lecciones del track tienen techo 1 o 2, así que al
+    // subir de nivel a mitad de camino desaparecían para siempre, sin
+    // haberlas leído y sin forma de volver a verlas. Mejor que te caiga
+    // una que te queda abajo —y la saques con un toque en "ya lo
+    // sabía"— que un agujero que no se cierra nunca.
+    //
+    // El tema apagado por el pulgar tampoco se trae, salvo en el track.
+    if (kind !== 'fundamento') {
+      candidatas = candidatas.filter(l =>
+        l.level_ceiling >= nivel && !(l.topic_id && mudos.has(l.topic_id)));
+    }
+
+    if (kind === 'radar') {
+      candidatas = candidatas.filter(l => new Date(l.created_at).getTime() >= vence);
+    }
+
+    candidatas.sort(kind === 'fundamento'
+      ? (a, b) => (a.track_order ?? 0) - (b.track_order ?? 0)
+      : (a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
+    // Entre dos lecciones de frontera que puede leer hoy, va primero la
+    // del tema que ella misma puso sobre la mesa en el Paso 1. Sólo en
+    // frontera: en el radar manda la novedad, que es la promesa de esa
+    // sección, y en el track manda la escalera, que es pedagógica.
+    if (kind === 'frontera') candidatas = primeroLoSuyo(candidatas, intereses);
+
+    // El catálogo sólo trae lecciones que tienen su contenido escrito,
+    // así que acá ya no hay que ir a buscarlo de a una.
+    if (candidatas.length) return candidatas[0];
+  }
+
+  return null;
+}
+
+async function traerHechas() {
+  const { data, error: e } = await db
+    .from('lesson_state').select('lesson_id, interes')
+    .eq('profile_id', perfil.id).not('answered_at', 'is', null);
+  if (e) throw e;
+  return data || [];
+}
+
+// Hoy le hace dos preguntas a los retos: si hay uno abierto y si los
+// dos últimos cerrados no sirvieron. Eran dos consultas; es una.
+async function retosDeHoy() {
+  const { data } = await db
+    .from('challenges').select('*')
+    .eq('profile_id', perfil.id)
+    .order('created_at', { ascending: false })
+    .limit(8);
+
+  const filas = data || [];
+  const cerrados = filas
+    .filter(r => r.answered_at)
+    .sort((a, b) => String(b.answered_at).localeCompare(String(a.answered_at)));
+
+  return {
+    abierto: filas.find(r => ['propuesto', 'haciendo'].includes(r.status)) || null,
+    empujar: !(cerrados.length >= 2 && cerrados.slice(0, 2).every(r => r.sirvio === -1))
+  };
+}
+
 async function vistaHoy() {
+  // Esta pantalla hacía diez consultas, una atrás de otra, y cada una
+  // cuesta unos 270 ms contra Supabase: casi tres segundos mirando una
+  // pantalla vacía antes de ver la primera palabra. Lo que sigue pide
+  // todo junto y rutea acá adentro.
+  //
+  // Caducar los repasos viejos es una escritura y no se espera: lo que
+  // lee repasoPendiente ya filtra por fecha, así que el resultado es el
+  // mismo haya terminado o no.
+  caducarRepasosViejos();
+
+  let pendiente, repaso, semana, hechas, retos, lecciones;
+  try {
+    [pendiente, repaso, semana, hechas, retos, lecciones] = await Promise.all([
+      compromisoPendiente(),
+      repasoPendiente(),
+      filaDeLaSemana(),
+      traerHechas(),
+      retosDeHoy(),
+      catalogo()
+    ]);
+  } catch {
+    // Un error de red no puede disfrazarse de "no hay nada nuevo".
+    return pintarFalla();
+  }
+
   // Lo que dijiste que ibas a hacer va antes que todo: es lo único de
   // la app que te pregunta por algo que pasó afuera.
-  const pendiente = await compromisoPendiente();
   if (pendiente) return vistaCompromiso(pendiente);
-
-  await caducarRepasosViejos();
 
   // El repaso va primero: son veinte segundos y es lo que evita que todo
   // lo anterior se borre. Después sigue lo nuevo.
-  const repaso = await repasoPendiente();
   if (repaso) return vistaRepaso(repaso);
 
-  const semana = await filaDeLaSemana();
-
-  // Ruteo: solo lecciones dentro del nivel de la persona, en orden del
-  // track, y que no haya contestado todavía.
-  const { data: hechas, error: eHechas } = await db
-    .from('lesson_state').select('lesson_id, interes').eq('profile_id', perfil.id).not('answered_at', 'is', null);
-
-  // Si esta consulta falla y seguimos, pasan dos cosas feas: te vuelve
-  // a servir algo que ya contestaste, que rompe la promesa central, o
-  // te muestra "por hoy está" como si fuera una decisión editorial.
-  // Un error de red no puede disfrazarse de afirmación sobre el mundo.
-  if (eHechas) return pintarFalla();
-
-  const ya = (hechas || []).map(r => r.lesson_id);
+  const ya = hechas.map(r => r.lesson_id);
 
   // El pulgar. Estaba escrito en el esquema desde el primer día —"9 con
   // pulgar abajo deja de traer el tema"— y no existía en el código: se
@@ -2030,17 +2171,17 @@ async function vistaHoy() {
   //
   // Y sólo apaga radar y frontera. El track es el piso: si alguien
   // pulgarea abajo los fundamentos, el problema no es el tema.
-  const apagados = new Set();
-  if (ya.length) {
-    const { data: deTema } = await db.from('lessons').select('id, topic_id').in('id', ya);
-    const saldo = {};
-    for (const l of deTema || []) {
-      if (!l.topic_id) continue;
-      const voto = (hechas.find(h => h.lesson_id === l.id) || {}).interes;
-      if (voto) saldo[l.topic_id] = (saldo[l.topic_id] || 0) + voto;
-    }
-    for (const [tema, n] of Object.entries(saldo)) if (n <= -3) apagados.add(Number(tema));
+  // El tema de cada lección sale del catálogo que ya está en memoria:
+  // antes esto era una consulta más.
+  const temaDe = Object.fromEntries(lecciones.map(l => [l.id, l.topic_id]));
+  const saldo = {};
+  for (const h of hechas) {
+    const tema = temaDe[h.lesson_id];
+    if (tema && h.interes) saldo[tema] = (saldo[tema] || 0) + h.interes;
   }
+  const apagados = new Set(
+    Object.entries(saldo).filter(([, n]) => n <= -3).map(([t]) => Number(t))
+  );
 
   // El radar va primero y lo más nuevo arriba: si el mundo produjo algo
   // que te sirve, eso gana sobre seguir el track. El track es el piso,
@@ -2053,59 +2194,13 @@ async function vistaHoy() {
   // carpeta de newsletters que nadie abre, con la culpa adentro. Por eso
   // una lección de radar que no leíste en diez días desaparece y no deja
   // rastro. No hay pendientes, no hay contador, no hay deuda.
-  const vence = new Date(Date.now() - 10 * 864e5).toISOString();
-
-  for (const [kind, columna, asc] of [
-    ['radar', 'created_at', false],
-    ['frontera', 'created_at', false],
-    ['fundamento', 'track_order', true]
-  ]) {
-    let q = db.from('lessons')
-      .select('id, slug, kind, topic_id, track_order, created_at')
-      .eq('kind', kind)
-      .eq('published', true)
-      .lte('level_floor', perfil.level)
-      .order(columna, { ascending: asc });
-
-    // El techo solo vale para lo perecedero y para la frontera. En el
-    // track no: las lecciones del track tienen techo 1 o 2, así que al
-    // subir de nivel a mitad de camino desaparecían para siempre, sin
-    // haberlas leído y sin forma de volver a verlas. Mejor que te caiga
-    // una que te queda abajo —y la saques con un toque en "ya lo
-    // sabía"— que un agujero que no se cierra nunca.
-    if (kind !== 'fundamento') q = q.gte('level_ceiling', perfil.level);
-
-    if (kind === 'radar') q = q.gte('created_at', vence);
-    if (ya.length) q = q.not('id', 'in', `(${ya.join(',')})`);
-
-    const { data: candidatas, error: eCand } = await q;
-    if (eCand) return pintarFalla();
-
-    // Entre dos lecciones de frontera que puede leer hoy, va primero la
-    // del tema que ella misma puso sobre la mesa en el Paso 1. Es una
-    // partición estable: no saca nada de la lista, cambia el orden.
-    //
-    // Sólo en frontera. En el radar manda la novedad, que es la
-    // promesa de esa sección; en el track manda la escalera, que es
-    // pedagógica. Acá el orden era `created_at desc`, o sea el azar de
-    // cuándo escribí cada una.
-    const lista = kind === 'frontera'
-      ? primeroLoSuyo(candidatas || [], perfil.interest_topics)
-      : (candidatas || []);
-
-    // Una lección sin contenido escrito todavía no es un error: simplemente
-    // no existe para la persona. Se pasa a la siguiente que sí lo tenga.
-    for (const c of lista) {
-      // El tema apagado por el pulgar no se trae, salvo en el track.
-      if (kind !== 'fundamento' && c.topic_id && apagados.has(c.topic_id)) continue;
-
-      const { data } = await db
-        .from('lesson_contents').select('*')
-        .eq('lesson_id', c.id).eq('lang', perfil.lang).is('tool_id', null).maybeSingle();
-      if (data) { prox = c; cont = data; break; }
-    }
-    if (cont) break;
-  }
+  prox = elegirLeccion(lecciones, {
+    hechas: ya,
+    apagados,
+    nivel: perfil.level,
+    intereses: perfil.interest_topics
+  });
+  cont = prox?.cont || null;
 
   if (!cont) {
     // El mundo no produce algo que valga la pena todos los días. Para eso
@@ -2140,11 +2235,11 @@ async function vistaHoy() {
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
     el('p', { class: 'ayuda', text: `${cont.minutes} minutos` }),
     el('button', { class: 'primario', onclick: () => vistaLeccion(prox.id, cont), text: 'Leer' }),
-    (await retoAbierto()) && (await empujarReto())
+    retos.abierto && retos.empujar
       ? el('button', {
           class: 'link',
           text: 'Tenés un reto esperando',
-          onclick: async () => { marcarNav('reto'); vistaReto(await retoAbierto()); }
+          onclick: () => { marcarNav('reto'); vistaReto(retos.abierto); }
         })
       : null
   );
@@ -2332,12 +2427,26 @@ function tapaLibro(libro) {
 // nuevo para la misma idea.
 const TEMA_APAGADO = -3;
 
-async function señalDeLibros(libros, estadosPorLibro) {
-  const [{ data: contestadas }, { data: piezas }] = await Promise.all([
+// Todo lo que la biblioteca necesita, en un viaje en vez de cuatro en
+// fila. Lo que sigue —señalDeLibros— no toca la red: es cuenta.
+async function datosDeLibros() {
+  const [{ data: libros }, { data: estados }, { data: contestadas }, { data: piezas }] = await Promise.all([
+    db.from('books').select('*').order('title'),
+    db.from('book_state').select('*').eq('profile_id', perfil.id),
     db.from('book_piece_state').select('piece_id, interes').eq('profile_id', perfil.id),
     db.from('book_pieces').select('id, book_id, for_read_state').eq('lang', perfil.lang)
   ]);
 
+  const porLibro = Object.fromEntries((estados || []).map(e => [e.book_id, e]));
+
+  return {
+    libros: libros || [],
+    porLibro,
+    señal: señalDeLibros(libros || [], porLibro, contestadas || [], piezas || [])
+  };
+}
+
+function señalDeLibros(libros, estadosPorLibro, contestadas, piezas) {
   const porPieza = Object.fromEntries((piezas || []).map(p => [p.id, p]));
   const temasDe = Object.fromEntries((libros || []).map(l => [l.id, l.themes || []]));
 
@@ -2397,17 +2506,12 @@ function elegirSugerencia(libro, libros, señal) {
 // Es una sugerencia, no una cola: aparece cuando terminaste algo que te
 // gustó y si no la tomás no queda nada pendiente.
 async function otroLibroComo(libro) {
-  const { data: libros } = await db.from('books').select('*').order('title');
-  const { data: estados } = await db.from('book_state').select('*').eq('profile_id', perfil.id);
-  const porLibro = Object.fromEntries((estados || []).map(e => [e.book_id, e]));
-  const señal = await señalDeLibros(libros, porLibro);
+  const { libros, señal } = await datosDeLibros();
   return elegirSugerencia(libro, libros, señal);
 }
 
 async function vistaBiblioteca() {
-  const { data: libros } = await db.from('books').select('*').order('title');
-  const { data: estados } = await db.from('book_state').select('*').eq('profile_id', perfil.id);
-  const porLibro = Object.fromEntries((estados || []).map(e => [e.book_id, e]));
+  const { libros, porLibro, señal } = await datosDeLibros();
 
   const nodos = [
     el('h1', { text: 'Biblioteca' }),
@@ -2415,9 +2519,7 @@ async function vistaBiblioteca() {
   ];
 
   // El orden deja de ser alfabético y pasa a decir algo.
-  const ordenados = ordenarLibros(libros, await señalDeLibros(libros, porLibro));
-
-  for (const libro of ordenados) {
+  for (const libro of ordenarLibros(libros, señal)) {
     const est = porLibro[libro.id];
     const mostrado = tituloLibro(libro);
 
@@ -2438,7 +2540,7 @@ async function vistaBiblioteca() {
 
     if (est) texto.append(el('span', { class: 'marca-leido', text: ESTADOS[est.read_state].t }));
 
-    nodos.push(el('button', { class: 'tarjeta libro', onclick: () => abrirLibro(libro) }, [
+    nodos.push(el('button', { class: 'tarjeta libro', onclick: () => abrirLibro(libro, est ?? null) }, [
       texto,
       tapaLibro(libro)
     ]));
@@ -2447,10 +2549,14 @@ async function vistaBiblioteca() {
   pintar(...nodos);
 }
 
-async function abrirLibro(libro) {
-  const { data: est } = await db
-    .from('book_state').select('*')
-    .eq('profile_id', perfil.id).eq('book_id', libro.id).maybeSingle();
+// `sabido` llega cuando quien abre el libro ya tenía el estado a mano
+// (la biblioteca lo trae para todos de una): sin eso, cada toque en un
+// libro era un viaje más antes de mostrar nada.
+async function abrirLibro(libro, sabido) {
+  const est = sabido !== undefined
+    ? sabido
+    : (await db.from('book_state').select('*')
+        .eq('profile_id', perfil.id).eq('book_id', libro.id).maybeSingle()).data;
 
   if (est) return vistaLibro(libro, est.read_state);
   return vistaEstadoLibro(libro);
@@ -2487,13 +2593,13 @@ function vistaEstadoLibro(libro, cambiando = false) {
 }
 
 async function vistaLibro(libro, estado) {
-  const { data: piezas } = await db
-    .from('book_pieces').select('*')
-    .eq('book_id', libro.id).eq('lang', perfil.lang).eq('for_read_state', estado)
-    .order('idx');
+  const [{ data: piezas }, { data: hechas }] = await Promise.all([
+    db.from('book_pieces').select('*')
+      .eq('book_id', libro.id).eq('lang', perfil.lang).eq('for_read_state', estado)
+      .order('idx'),
+    db.from('book_piece_state').select('piece_id, interes').eq('profile_id', perfil.id)
+  ]);
 
-  const { data: hechas } = await db
-    .from('book_piece_state').select('piece_id, interes').eq('profile_id', perfil.id);
   const ya = new Set((hechas || []).map(r => r.piece_id));
 
   const nodos = [
@@ -2599,25 +2705,10 @@ async function retoAbierto() {
   return (data || [])[0] || null;
 }
 
-// `sirvio` era la otra señal escrita y sin leer: dos clics al cerrar un
-// reto que no cambiaban nada.
-//
-// Dos retos seguidos que no le sirvieron son un dato sobre nosotros, no
-// sobre ella. Hoy deja de empujar el reto —el aviso al pie de la
-// pantalla— y el reto queda en su pestaña, que es donde está si lo
-// quiere. Nada se esconde: se deja de insistir. El generador, además,
-// cambia de nodo (ver jobs/retos-circulo.mjs).
-async function empujarReto() {
-  const { data } = await db
-    .from('challenges').select('sirvio')
-    .eq('profile_id', perfil.id)
-    .not('answered_at', 'is', null)
-    .order('answered_at', { ascending: false })
-    .limit(2);
-
-  const ultimos = data || [];
-  return !(ultimos.length === 2 && ultimos.every(r => r.sirvio === -1));
-}
+// (`sirvio` se lee en retosDeHoy, junto con el reto abierto: dos retos
+//  seguidos que no le sirvieron y Hoy deja de empujar el aviso. El reto
+//  queda en su pestaña, que es donde está si lo quiere. Nada se
+//  esconde: se deja de insistir.)
 
 async function vistaReto(reto) {
   if (!reto) {
@@ -2696,11 +2787,12 @@ async function vistaMapa() {
   const porEvidencia = Object.fromEntries((dominios || []).map(d => [d.topic_id, d]));
 
   // Y lo que la app vio por su cuenta: lecciones contestadas por nodo.
+  // El nodo de cada lección sale del catálogo, que ya está en memoria.
   const ids = (hechas || []).map(h => h.lesson_id);
   let porLecciones = {};
   if (ids.length) {
-    const { data: ls } = await db.from('lessons').select('id, topic_id').in('id', ids);
-    for (const l of ls || []) {
+    const ls = (await catalogo().catch(() => [])).filter(l => ids.includes(l.id));
+    for (const l of ls) {
       if (l.topic_id) porLecciones[l.topic_id] = (porLecciones[l.topic_id] || 0) + 1;
     }
   }
