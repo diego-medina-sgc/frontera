@@ -58,7 +58,7 @@ const [
   traer('topics?select=id,slug,name_es,kind,level_floor,terms'),
   traer('lessons?select=id,slug,kind,topic_id,level_floor,level_ceiling,track_order,published'),
   traer('lesson_contents?select=id,lesson_id,lang,tool_id,title,body_md,minutes'),
-  traer('books?select=id,slug,title,themes'),
+  traer('books?select=id,slug,title,themes,terms'),
   traer('book_pieces?select=id,book_id,lang,for_read_state,idx,title,body_md'),
   traer('profiles?select=id,level,level_source,onboarded_at,lang,interest_topics,puede_invitar'),
   traer('lesson_state?select=profile_id,lesson_id,status,comprension,answered_at'),
@@ -283,6 +283,11 @@ if (puedenInvitar.length > 1) {
 for (const b of libros) {
   if (!Array.isArray(b.themes) || !b.themes.length) {
     falla('Libro sin temas', `${b.title} (queda fuera del orden y de las sugerencias)`);
+  }
+  // Y sin términos no lo alcanza nunca el contexto de nadie: para esa
+  // persona el libro sale siempre por azar.
+  if (!Array.isArray(b.terms) || !b.terms.length) {
+    falla('Libro sin términos', `${b.title} (no lo puede encontrar el contexto de nadie)`);
   }
 }
 

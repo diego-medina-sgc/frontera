@@ -2479,16 +2479,55 @@ function señalDeLibros(libros, estadosPorLibro, contestadas, piezas) {
 
   const apagado = (l) => (l.themes || []).length > 0 && (l.themes || []).every(t => apagados.has(t));
 
-  return { hechas, porTema, agotados, apagados, puntaje, apagado };
+  // Lo que la persona escribió sobre su trabajo, cruzado con las
+  // palabras de cada libro (`books.terms`, migración 052). Cuenta
+  // cuántas pegan: un libro que toca tres cosas de las que hace va
+  // antes que uno que toca una.
+  //
+  // Si no escribió contexto, esto es cero para todos y el orden lo
+  // decide el azar del día. Es a propósito: inventarle intereses a
+  // alguien que no dijo nada es peor que mostrarle la biblioteca
+  // barajada.
+  const suContexto = (perfil?.context_summary || '').toLowerCase();
+  const contexto = (l) => (!suContexto.trim() ? 0
+    : (l.terms || []).filter(t => t && suContexto.includes(String(t).toLowerCase())).length);
+
+  const azar = (l) => azarDelDia(perfil?.id || '', l.id);
+
+  return { hechas, porTema, agotados, apagados, puntaje, apagado, contexto, azar };
 }
 
-// El orden de la biblioteca: arriba lo que no agotaste y cuyos temas te
-// pegaron, después el resto, al final lo agotado y lo que apagaste. No
-// saca nada de la lista: la biblioteca sigue entera.
+// Un azar que no se mueve en todo el día. Una biblioteca que se
+// reordena cada vez que entrás no se puede recorrer: perdés el lugar.
+// La semilla lleva el id de la persona, así no les sale el mismo orden
+// a todos.
+function azarDelDia(id, semilla) {
+  const texto = `${id}|${semilla}|${new Date().toISOString().slice(0, 10)}`;
+  let h = 2166136261;
+  for (let i = 0; i < texto.length; i++) {
+    h ^= texto.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967296;
+}
+
+// El orden de la biblioteca, en este orden de prioridad:
+//
+//   1. lo que te gustó          (el pulgar: es lo que hiciste)
+//   2. lo que habla de tu trabajo (tu contexto: es lo que dijiste)
+//   3. el azar del día          (si no hay ni una cosa ni la otra)
+//
+// Lo medido le gana a lo declarado, y las dos le ganan a nada. Abajo de
+// todo, lo agotado y lo que apagaste con el pulgar. No saca nada de la
+// lista: la biblioteca sigue entera.
 function ordenarLibros(libros, señal) {
-  const rango = (l) => (señal.apagado(l) ? 3 : señal.agotados.has(l.id) ? 2 : señal.puntaje(l) > 0 ? 0 : 1);
+  const rango = (l) => (señal.apagado(l) ? 3 : señal.agotados.has(l.id) ? 2 : 0);
+
   return [...(libros || [])].sort((a, b) =>
-    rango(a) - rango(b) || señal.puntaje(b) - señal.puntaje(a) || a.title.localeCompare(b.title));
+    rango(a) - rango(b)
+    || señal.puntaje(b) - señal.puntaje(a)
+    || señal.contexto(b) - señal.contexto(a)
+    || señal.azar(a) - señal.azar(b));
 }
 
 // El otro libro: el que más temas comparte con éste, sin agotar y sin
@@ -2500,7 +2539,11 @@ function elegirSugerencia(libro, libros, señal) {
 
   return (libros || [])
     .filter(l => l.id !== libro.id && !señal.agotados.has(l.id) && !señal.apagado(l) && comparten(l) > 0)
-    .sort((a, b) => comparten(b) - comparten(a) || señal.puntaje(b) - señal.puntaje(a) || a.title.localeCompare(b.title))[0] || null;
+    .sort((a, b) =>
+      comparten(b) - comparten(a)
+      || señal.puntaje(b) - señal.puntaje(a)
+      || señal.contexto(b) - señal.contexto(a)
+      || señal.azar(a) - señal.azar(b))[0] || null;
 }
 
 // Es una sugerencia, no una cola: aparece cuando terminaste algo que te
