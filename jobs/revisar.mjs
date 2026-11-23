@@ -60,7 +60,7 @@ const [
   traer('lesson_contents?select=id,lesson_id,lang,tool_id,title,body_md,minutes'),
   traer('books?select=id,slug,title,themes'),
   traer('book_pieces?select=id,book_id,lang,for_read_state,idx,title,body_md'),
-  traer('profiles?select=id,level,level_source,onboarded_at,lang,interest_topics'),
+  traer('profiles?select=id,level,level_source,onboarded_at,lang,interest_topics,puede_invitar'),
   traer('lesson_state?select=profile_id,lesson_id,status,comprension,answered_at'),
   traer('reviews?select=id,profile_id,lesson_id,stage,due_on,done_at'),
   traer('challenges?select=id,profile_id,status,title,body_md,nodo:topic_id,dificultad,sirvio,answered_at'),
@@ -270,6 +270,14 @@ for (const p of perfiles) {
   if (fantasmas.length) falla('Intereses apuntando a nodos que no existen', `${p.id.slice(0, 8)}: ${fantasmas.length}`);
 }
 
+// 21b. Quién puede sumar gente. Es el único permiso del proyecto y lo
+//      que hace es crear cuentas, así que tiene que estar a la vista en
+//      cada corrida y no enterrado en una tabla.
+const puedenInvitar = perfiles.filter(p => p.puede_invitar);
+if (puedenInvitar.length > 1) {
+  aviso('Más de una cuenta puede sumar gente', puedenInvitar.map(p => p.id.slice(0, 8)).join(', '));
+}
+
 // 21. Un libro sin temas no entra nunca al ruteo de la biblioteca: no
 //     se puede ordenar por lo que te gustó ni sugerir después de él.
 for (const b of libros) {
@@ -294,6 +302,8 @@ console.log(`Frontera · controles\n`);
 console.log(`${topics.length} nodos · ${lessons.filter(l => l.published).length} lecciones · ${contenidos.length} contenidos`);
 console.log(`${libros.length} libros · ${piezas.length} piezas · ${retos.length} retos · ${senales.length} señales`);
 console.log(`${perfiles.length} perfiles · ${repasos.filter(r => !r.done_at).length} repasos pendientes\n`);
+console.log(`pueden sumar gente: ${puedenInvitar.length ? puedenInvitar.map(p => p.id.slice(0, 8)).join(', ') : 'nadie'}
+`);
 
 if (!fallas.length) {
   console.log('✓ Sin fallas.');

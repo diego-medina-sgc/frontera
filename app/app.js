@@ -922,6 +922,72 @@ function grupoVos() {
   ]);
 }
 
+// ------------------------------------------------------------
+// Círculo: sumar a alguien sin salir de la app
+// ------------------------------------------------------------
+// Con la publishable key no se puede crear la cuenta de otra persona, y
+// está bien que así sea. Lo hace la edge function `invitar`, que tiene
+// la secret key del lado del servidor.
+//
+// Que este grupo aparezca o no es cosmético: alguien que edite el
+// JavaScript para hacerlo aparecer no consigue nada, porque la función
+// vuelve a verificar `puede_invitar` con la secret key antes de crear a
+// nadie. Esconder el formulario nunca fue la seguridad.
+function grupoCirculo() {
+  if (!perfil.puede_invitar) return null;
+
+  const mail = el('input', {
+    type: 'email', id: 'mail-nuevo', autocomplete: 'off', placeholder: 'mail@ejemplo.com'
+  });
+  const clave = el('input', {
+    type: 'password', id: 'clave-nueva', autocomplete: 'new-password', placeholder: 'Al menos 8 caracteres'
+  });
+  const dicho = el('p', { class: 'ayuda' });
+
+  const alta = el('button', {
+    class: 'primario',
+    text: 'Dar de alta',
+    onclick: async (ev) => {
+      const boton = ev.currentTarget;
+      boton.disabled = true;
+      dicho.textContent = tr('Creando la cuenta…');
+
+      const { data, error: e } = await db.functions.invoke('invitar', {
+        body: { mail: mail.value.trim(), clave: clave.value }
+      });
+
+      boton.disabled = false;
+
+      // El servidor devuelve su propio texto, ya en castellano: mostrar
+      // eso es mejor que traducir un código de estado.
+      if (e) {
+        let texto = 'No se pudo crear la cuenta.';
+        try { texto = (await e.context?.json())?.error || texto; } catch { /* queda el genérico */ }
+        dicho.textContent = tr(texto);
+        return;
+      }
+
+      mail.value = '';
+      clave.value = '';
+      dicho.textContent = data?.perfil === false
+        ? tr('La cuenta quedó creada pero sin perfil. Avisá antes de que entre.')
+        : tr('Listo. Ya puede entrar con ese mail y esa contraseña.');
+    }
+  });
+
+  return el('div', { class: 'grupo' }, [
+    el('p', { class: 'etiqueta', text: 'Círculo' }),
+    el('label', { for: 'mail-nuevo', text: 'Sumar a alguien' }),
+    el('p', { class: 'ayuda', text: 'Le creás la cuenta y le pasás vos el mail y la contraseña. No se manda ningún correo. Ojo: la app todavía no tiene pantalla para cambiar la contraseña, así que la que pongas le queda.' }),
+    mail,
+    el('div', { style: 'height:12px' }),
+    clave,
+    el('div', { style: 'height:16px' }),
+    alta,
+    dicho
+  ]);
+}
+
 async function vistaPerfil() {
   marcarNav('ajustes');
 
@@ -973,6 +1039,8 @@ async function vistaPerfil() {
     ]),
 
     grupoVos(),
+
+    grupoCirculo(),
 
     el('div', { class: 'grupo' }, [
       el('p', { class: 'etiqueta', text: 'Cuenta' }),

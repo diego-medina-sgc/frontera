@@ -92,6 +92,27 @@ const EN = {
   'Guardado ✓': "Saved ✓",
   'No se pudo guardar. Probá de nuevo.': "Couldn't save. Try again.",
 
+  // ---- Ajustes: Círculo ----
+  'Círculo': "Circle",
+  'Sumar a alguien': "Add someone",
+  'Le creás la cuenta y le pasás vos el mail y la contraseña. No se manda ningún correo. Ojo: la app todavía no tiene pantalla para cambiar la contraseña, así que la que pongas le queda.': "You create the account and pass on the email and password yourself. No email is sent. Careful: the app has no screen for changing a password yet, so whatever you set is what they keep.",
+  'mail@ejemplo.com': "name@example.com",
+  'Al menos 8 caracteres': "At least 8 characters",
+  'Dar de alta': "Create the account",
+  'Creando la cuenta…': "Creating the account…",
+  'Listo. Ya puede entrar con ese mail y esa contraseña.': "Done. They can sign in now with that email and password.",
+  'La cuenta quedó creada pero sin perfil. Avisá antes de que entre.': "The account was created but has no profile. Flag it before they sign in.",
+  // Los textos que devuelve la edge function, para que el error no
+  // aparezca en castellano en una app en inglés.
+  'No se pudo crear la cuenta.': "The account couldn't be created.",
+  'Tu cuenta no puede sumar gente.': "Your account can't add people.",
+  'Ya hay una cuenta con ese mail.': "There's already an account with that email.",
+  'Ese mail no parece un mail.': "That doesn't look like an email address.",
+  'La contraseña tiene que tener al menos 8 caracteres.': "The password needs at least 8 characters.",
+  'Sesión inválida.': "Invalid session.",
+  'Sin sesión.': "No session.",
+  'No entendí el pedido.': "I didn't understand the request.",
+
   // ---- Semana ----
   'Esta semana': "This week",
   'L': "M",
