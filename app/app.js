@@ -2475,7 +2475,7 @@ function catalogo() {
 // rastro. No hay pendientes, no hay contador, no hay deuda.
 const DIAS_DEL_RADAR = 10;
 
-function elegirLeccion(lecciones, { hechas, apagados, nivel, intereses }) {
+function elegirLeccion(lecciones, { hechas, apagados, nivel, intereses, subioUsando = false }) {
   const hecha = new Set(hechas || []);
   const mudos = apagados || new Set();
   const vence = Date.now() - DIAS_DEL_RADAR * 864e5;
@@ -2491,10 +2491,18 @@ function elegirLeccion(lecciones, { hechas, apagados, nivel, intereses }) {
     // una que te queda abajo —y la saques con un toque en "ya lo
     // sabía"— que un agujero que no se cierra nunca.
     //
+    // Pero eso vale sólo para quien SUBIÓ usando la app. A quien entró
+    // directamente en nivel 3, ignorar el techo le servía doce días
+    // seguidos de fundamentos de nivel 0 a 2 (medido el 24/11 con el
+    // catálogo real): la promesa "nunca te explica lo que ya sabés",
+    // rota todos los días. Para esa persona el techo vale también acá.
+    //
     // El tema apagado por el pulgar tampoco se trae, salvo en el track.
     if (kind !== 'fundamento') {
       candidatas = candidatas.filter(l =>
         l.level_ceiling >= nivel && !(l.topic_id && mudos.has(l.topic_id)));
+    } else if (!subioUsando) {
+      candidatas = candidatas.filter(l => l.level_ceiling >= nivel);
     }
 
     if (kind === 'radar') {
@@ -2722,7 +2730,8 @@ async function vistaHoy() {
     hechas: ya,
     apagados,
     nivel: perfil.level,
-    intereses: perfil.interest_topics
+    intereses: perfil.interest_topics,
+    subioUsando: perfil.level_source === 'desempeno'
   });
 
   // El arco: empezado, gana sobre todo lo demás; sin empezar, su día 1
