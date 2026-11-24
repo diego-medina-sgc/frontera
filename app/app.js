@@ -101,8 +101,50 @@ function pintar(...nodos) {
   // Toda pantalla nueva sale del modo lectura. Si es un lector, se
   // vuelve a entrar enseguida.
   salirDelLector();
+  clearTimeout(esqueletoPendiente);
   vista.replaceChildren(...nodos.filter(Boolean));
   window.scrollTo(0, 0);
+  // La pantalla nueva entra con un fundido corto. Sólo opacidad, a
+  // propósito: un transform sobre <main> convierte en relativos los
+  // avisos y paneles fijos que viven adentro, y saltan de lugar.
+  vista.classList.remove('entra');
+  void vista.offsetWidth;
+  vista.classList.add('entra');
+}
+
+// El esqueleto: si una pantalla tarda más de lo que se nota, en vez de
+// dejar la anterior congelada (que se lee como "no me hizo caso") se
+// dibuja la forma de lo que viene. Si llega antes, no aparece nunca: un
+// esqueleto que parpadea 50 ms es peor que nada.
+let esqueletoPendiente = null;
+
+function esperando() {
+  clearTimeout(esqueletoPendiente);
+  esqueletoPendiente = setTimeout(() => {
+    salirDelLector();
+    vista.classList.remove('entra');
+    vista.replaceChildren(el('div', { class: 'esqueleto', 'aria-busy': 'true', 'aria-label': 'Cargando' }, [
+      el('div', { class: 'hueso hueso-chico' }),
+      el('div', { class: 'hueso hueso-titulo' }),
+      el('div', { class: 'hueso hueso-titulo corto' }),
+      el('div', { class: 'hueso hueso-linea' }),
+      el('div', { class: 'hueso hueso-linea' }),
+      el('div', { class: 'hueso hueso-tarjeta' })
+    ]));
+  }, 140);
+}
+
+// Cerrar algo tiene que sentirse cerrado. Un tilde que se dibuja en el
+// medio y se va solo: no bloquea, no hay que tocarlo, no tapa la
+// pantalla que viene.
+function celebrar() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const capa = el('div', { class: 'hecho-capa', 'aria-hidden': 'true' });
+  capa.innerHTML = '<svg viewBox="0 0 52 52" width="52" height="52"><path d="M15 27l7.5 7.5L38 19" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  document.body.append(capa);
+  // En Android, un toque mínimo de vibración. iOS lo ignora.
+  try { navigator.vibrate?.(12); } catch { /* nada */ }
+  setTimeout(() => capa.remove(), 900);
 }
 
 // Markdown mínimo: ## ### **negrita** y listas. Suficiente para lecciones
@@ -758,10 +800,18 @@ function marcarNav(cual) {
   }
 }
 
-navHoy.addEventListener('click', () => { marcarNav('hoy'); vistaHoy(); });
-navReto.addEventListener('click', async () => { marcarNav('reto'); vistaReto(await retoAbierto()); });
-navMapa.addEventListener('click', () => { marcarNav('mapa'); vistaMapa(); });
-navLibros.addEventListener('click', () => { marcarNav('libros'); vistaBiblioteca(); });
+// Con el esqueleto a la vista, una pestaña que falla no puede quedar
+// latiendo para siempre: si algo se rompe, se dice.
+function ir(nombre, vista) {
+  marcarNav(nombre);
+  esperando();
+  Promise.resolve().then(vista).catch(() => pintarFalla());
+}
+
+navHoy.addEventListener('click', () => ir('hoy', vistaHoy));
+navReto.addEventListener('click', () => ir('reto', async () => vistaReto(await retoAbierto())));
+navMapa.addEventListener('click', () => ir('mapa', vistaMapa));
+navLibros.addEventListener('click', () => ir('libros', vistaBiblioteca));
 
 async function dibujarRacha() {
   const { data } = await db.rpc('racha_semanal', { p_profile: perfil.id });
@@ -1176,6 +1226,8 @@ async function revisarAscenso() {
 }
 
 async function marcarActividad(kind) {
+  // Todo lo que pasa por acá es algo que la persona terminó.
+  celebrar();
   const hoy = new Date().toISOString().slice(0, 10);
   await db.from('activity').upsert(
     { profile_id: perfil.id, day: hoy, kind },
@@ -1187,42 +1239,172 @@ async function marcarActividad(kind) {
 // ============================================================
 // Entrar
 // ============================================================
+// La entrada era un formulario y nada más: alguien que no conocía la app
+// tenía que dar su mail sin saber para qué. Ahora muestra primero lo que
+// la app hace —la misma pregunta, sin y con instrucciones, que es el
+// "esto me sirve" del Paso 1— y el formulario va después.
+//
+// El ejemplo es inventado y dice que es un ejemplo. La prueba de verdad
+// la hace cada uno en su herramienta, en el Paso 1.
+const DEMO = {
+  pregunta: 'Necesito avisarle a mi equipo que la reunión del jueves pasa al viernes a las 10.',
+  sin: [
+    '¡Claro! Aquí tienes algunas opciones para comunicar el cambio de manera efectiva:',
+    '**Opción 1 (formal):** Estimado equipo: por medio del presente les informo que la reunión prevista para el día jueves ha sido reprogramada para el viernes a las 10:00 h. Agradezco de antemano su comprensión…',
+    '**Opción 2 (cercana):** ¡Hola a todos! 😊 Les cuento que movimos la reunión…',
+    '**Opción 3 (breve):** …',
+    '¿Te gustaría que adapte el tono o que agregue más detalles?'
+  ],
+  con: [
+    'Equipo: la reunión del jueves pasa al **viernes a las 10**, mismo lugar. Si a alguien no le da el horario, avísenme hoy.'
+  ],
+  // Lo que causa la diferencia, a la vista: sin esto la respuesta corta
+  // parece magia o truco.
+  instrucciones: [
+    'Coordino un equipo de siete personas en una institución educativa.',
+    'Respondeme corto y al grano: primero la conclusión.',
+    'Directo, sin halagos ni introducciones.',
+    'Español rioplatense.',
+    'Si te pido un mensaje, dame una sola versión, lista para mandar.',
+    'Si te falta información, preguntame antes de asumir.'
+  ]
+};
+
+function demoAntesDespues() {
+  const respuesta = el('div', { class: 'demo-respuesta' });
+  const pie = el('p', { class: 'demo-pie' });
+  const selector = el('div', { class: 'segmentos', role: 'group', 'aria-label': 'Ver la respuesta' });
+
+  const mostrar = (cual) => {
+    for (const b of selector.children) b.setAttribute('aria-pressed', String(b.dataset.cual === cual));
+    const a = el('article');
+    a.append(markdown(DEMO[cual].join('\n\n')));
+    respuesta.replaceChildren(a);
+    if (cual === 'con') {
+      respuesta.append(el('div', { class: 'demo-instrucciones' }, [
+        el('p', { class: 'etiqueta', text: 'Lo que tenía pegado' }),
+        el('div', { class: 'instrucciones', text: DEMO.instrucciones.join('\n') })
+      ]));
+    }
+    respuesta.dataset.cual = cual;
+    // Reinicia la animación de cambio sin depender de un timer.
+    respuesta.classList.remove('cambia');
+    void respuesta.offsetWidth;
+    respuesta.classList.add('cambia');
+    // Contadas, no escritas a mano: si alguien cambia el ejemplo, el
+    // número no queda mintiendo.
+    const palabras = DEMO[cual].join(' ').split(/\s+/).filter(w => /[\p{L}\d]/u.test(w)).length;
+    pie.textContent = cual === 'sin'
+      ? `${palabras} palabras, tres versiones y una pregunta de vuelta. Arranca de cero porque no sabe quién sos.`
+      : `${palabras} palabras y una sola respuesta, lista para mandar.`;
+  };
+
+  for (const [cual, texto] of [['sin', 'Sin instrucciones'], ['con', 'Con tus instrucciones']]) {
+    const b = el('button', { text: texto, 'aria-pressed': 'false', onclick: () => mostrar(cual) });
+    b.dataset.cual = cual;
+    selector.append(b);
+  }
+
+  mostrar('sin');
+
+  return el('section', { class: 'demo' }, [
+    el('p', { class: 'etiqueta', text: 'Ejemplo · misma pregunta' }),
+    el('div', { class: 'demo-pregunta', text: DEMO.pregunta }),
+    selector,
+    respuesta,
+    pie
+  ]);
+}
+
 function vistaEntrar() {
   navegacion.hidden = true;
   const mail = el('input', { type: 'email', id: 'mail', autocomplete: 'email', placeholder: 'tu@mail.com' });
   const clave = el('input', { type: 'password', id: 'clave', autocomplete: 'current-password', placeholder: 'Tu contraseña' });
   const msj = el('div');
+  const boton = el('button', { class: 'primario', type: 'submit', text: 'Entrar' });
 
-  const entrar = async (nuevo) => {
+  // El alta está cerrada a propósito: esto es un círculo chico, no una
+  // app abierta. Antes había un botón "crear cuenta" que llevaba
+  // derecho a un error. Ahora la pantalla dice cómo se entra de verdad.
+  const entrar = async (ev) => {
+    ev.preventDefault();
+    if (!mail.value.trim() || !clave.value) {
+      return msj.replaceChildren(error('Falta el mail o la contraseña.'));
+    }
+    boton.disabled = true;
     msj.replaceChildren(el('p', { class: 'ayuda', text: 'Un segundo…' }));
-    const creds = { email: mail.value.trim(), password: clave.value };
-    const { error: e } = nuevo
-      ? await db.auth.signUp(creds)
-      : await db.auth.signInWithPassword(creds);
+    const { error: e } = await db.auth.signInWithPassword({ email: mail.value.trim(), password: clave.value });
+    boton.disabled = false;
 
     if (e) {
-      // El alta está cerrada a propósito: esto es un círculo chico, no una
-      // app abierta. Que no vea un error en inglés el que lo intente.
-      const texto = /signup|sign-up|not allowed|disabled/i.test(e.message)
-        ? 'El alta de cuentas está cerrada. Pedile a Diego que te habilite una y volvé a entrar acá.'
-        : /invalid login|credentials/i.test(e.message)
-          ? 'El mail o la contraseña no coinciden.'
-          : e.message;
+      const texto = /invalid login|credentials/i.test(e.message)
+        ? 'El mail o la contraseña no coinciden.'
+        : e.message;
       return msj.replaceChildren(error(texto));
     }
 
     location.reload();
   };
 
-  pintar(
-    el('h1', { text: 'Frontera' }),
-    el('p', { class: 'bajada', text: 'Aprender IA al ritmo en que la IA cambia.' }),
+  const formulario = el('form', { class: 'entrar', id: 'entrar', onsubmit: entrar }, [
+    el('h2', { text: 'Entrar' }),
     el('label', { for: 'mail', text: 'Tu mail' }), mail,
     el('div', { style: 'height:16px' }),
     el('label', { for: 'clave', text: 'Tu contraseña' }), clave,
     msj,
-    el('button', { class: 'primario', onclick: () => entrar(false), text: 'Entrar' }),
-    el('button', { class: 'link', onclick: () => entrar(true), text: 'Es mi primera vez, crear cuenta' })
+    boton,
+    el('p', { class: 'ayuda entrar-nota', text: 'Por ahora Frontera es un círculo chico, por invitación. Si alguien del círculo te sumó, entrás con el mail y la contraseña que te pasó.' })
+  ]);
+
+  const irAlFormulario = () => {
+    formulario.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    // Sin esperar al scroll el teclado del teléfono tapa el campo.
+    setTimeout(() => mail.focus({ preventScroll: true }), 350);
+  };
+
+  pintar(
+    el('div', { class: 'portada-barra' }, [
+      el('span', { class: 'portada-marca' }, [
+        el('img', { src: 'icono.svg', alt: '', width: '28', height: '28' }),
+        el('span', { text: 'Frontera' })
+      ]),
+      el('button', { class: 'portada-entrar', text: 'Ya tengo cuenta', onclick: irAlFormulario })
+    ]),
+
+    el('h1', { class: 'portada-titulo', text: 'La IA que ya usás, cada semana un poco mejor.' }),
+    el('p', { class: 'bajada', text: 'Cinco minutos por día, a tu nivel y sobre tu trabajo real. Nunca te explica lo que ya sabés.' }),
+
+    demoAntesDespues(),
+
+    el('p', { class: 'demo-cierre', text: 'Lo único que cambió es un texto de seis líneas que dice quién sos y cómo querés que te respondan. Lo armás en el primer paso, en cinco minutos, y lo pegás una sola vez en ChatGPT, Claude o Gemini.' }),
+
+    el('p', { class: 'etiqueta', text: 'Cómo sigue' }),
+    el('ol', { class: 'pasos-portada' }, [
+      el('li', {}, [
+        el('span', { class: 'pasos-num', text: '1' }),
+        el('div', {}, [
+          el('strong', { text: 'Tus instrucciones' }),
+          el('span', { text: 'Te vas con algo que funciona desde el primer día.' })
+        ])
+      ]),
+      el('li', {}, [
+        el('span', { class: 'pasos-num', text: '2' }),
+        el('div', {}, [
+          el('strong', { text: 'Una sola cosa por día' }),
+          el('span', { text: 'A tu nivel. Si ya lo sabés, la salteás y la app aprende.' })
+        ])
+      ]),
+      el('li', {}, [
+        el('span', { class: 'pasos-num', text: '3' }),
+        el('div', {}, [
+          el('strong', { text: 'Retos sobre tu trabajo' }),
+          el('span', { text: 'Media hora con tu propio material, no ejercicios de manual.' })
+        ])
+      ])
+    ]),
+    el('p', { class: 'portada-promesa', text: 'Nada se acumula: lo que no leíste no te queda pendiente.' }),
+
+    formulario
   );
 }
 
@@ -2022,7 +2204,7 @@ function catalogo() {
 
   catalogoIdioma = perfil.lang;
   catalogoPedido = db.from('lessons')
-    .select('id, slug, kind, topic_id, track_order, created_at, level_floor, level_ceiling, lesson_contents!inner(id, title, hook, body_md, minutes)')
+    .select('id, slug, kind, topic_id, track_order, created_at, level_floor, level_ceiling, arc, arc_day, lesson_contents!inner(id, title, hook, body_md, minutes)')
     .eq('published', true)
     .eq('lesson_contents.lang', perfil.lang)
     .is('lesson_contents.tool_id', null)
@@ -2097,9 +2279,110 @@ function elegirLeccion(lecciones, { hechas, apagados, nivel, intereses }) {
   return null;
 }
 
+// ============================================================
+// Arcos
+// ============================================================
+// Un arco es una tarea real contada en cinco días, uno por día, que
+// termina con algo armado. El contenido estaba ordenado por conceptos
+// y la gente no piensa su trabajo así: piensa "el mail de siempre".
+//
+// Reglas, todas acá y en ningún otro lado:
+//   · Empezado, va primero en Hoy (después del compromiso y el
+//     repaso, que son veinte segundos). Un día por vez: el siguiente
+//     aparece recién al día siguiente.
+//   · Diez días sin tocarlo y se cierra solo. Nada se acumula: no hay
+//     un "te quedaron tres días" esperándote.
+//   · Si el día 1 se marcó "ya lo sabía", el arco no se empezó: no se
+//     empuja el resto.
+//   · El día 1 se ofrece como puerta a quien está entre el piso y el
+//     techo del arco. Después del radar, antes de frontera y track.
+// ============================================================
+const NOMBRE_ARCO = {
+  'mail-repetido': 'El mail que escribís siempre'
+};
+
+const DIAS_DEL_ARCO = 10;
+
+// Pura: no toca la red. `estados` son las filas de lesson_state
+// contestadas (lesson_id, status, answered_at). `hoy` se puede pasar
+// para probarla.
+function elegirArco(lecciones, { estados, nivel, hoy = new Date() }) {
+  const porArco = {};
+  for (const l of lecciones || []) {
+    if (l.kind === 'arco' && l.arc && l.arc_day) (porArco[l.arc] ||= []).push(l);
+  }
+  const estadoDe = new Map((estados || []).map(e => [e.lesson_id, e]));
+  const inicioDeHoy = new Date(hoy); inicioDeHoy.setHours(0, 0, 0, 0);
+
+  let puerta = null;
+
+  for (const [arc, dias] of Object.entries(porArco)) {
+    dias.sort((a, b) => a.arc_day - b.arc_day);
+    const total = dias.length;
+    const hechos = dias.filter(d => estadoDe.has(d.id));
+    const empezado = hechos.some(d => estadoDe.get(d.id).status === 'hecha');
+
+    if (!hechos.length) {
+      const primero = dias[0];
+      if (!puerta && primero.arc_day === 1 && primero.level_floor <= nivel && primero.level_ceiling >= nivel) {
+        puerta = { estado: 'puerta', arc, dia: 1, total, leccion: primero };
+      }
+      continue;
+    }
+
+    // Lo marcó como sabido sin hacer ninguno: no lo quiere. No se insiste.
+    if (!empezado) continue;
+
+    const siguiente = dias.find(d => !estadoDe.has(d.id));
+    if (!siguiente) continue; // terminado
+
+    const ultima = Math.max(...hechos.map(d => new Date(estadoDe.get(d.id).answered_at).getTime()));
+    // Abandonado: se cierra sin dejar rastro.
+    if (hoy.getTime() - ultima > DIAS_DEL_ARCO * 864e5) continue;
+
+    const info = { arc, dia: siguiente.arc_day, total, leccion: siguiente };
+    // Un día por vez: lo de hoy ya se hizo, el que sigue es mañana.
+    if (ultima >= inicioDeHoy.getTime()) return { ...info, estado: 'manana' };
+    return { ...info, estado: 'toca' };
+  }
+
+  return puerta;
+}
+
+// En Hoy: de qué arco es y en qué día va, con los cinco días como
+// puntos. Los hechos llenos, el de hoy marcado, los que faltan vacíos:
+// se ve el camino entero sin que sea una lista de pendientes.
+function marcaDeArco({ arc, dia, total }) {
+  const puntos = el('div', { class: 'arco-puntos', 'aria-hidden': 'true' });
+  for (let i = 1; i <= total; i++) {
+    puntos.append(el('span', { class: i < dia ? 'hecho' : i === dia ? 'hoy' : '' }));
+  }
+  return el('div', { class: 'arco-marca' }, [
+    el('p', { class: 'paso', text: `Día ${dia} de ${total} · ${tr(NOMBRE_ARCO[arc] || arc)}` }),
+    puntos
+  ]);
+}
+
+// Los arcos que la persona completó, para "Lo que hiciste".
+function arcosTerminados(lecciones, estados) {
+  const estadoDe = new Map((estados || []).map(e => [e.lesson_id, e]));
+  const porArco = {};
+  for (const l of lecciones || []) {
+    if (l.kind === 'arco' && l.arc) (porArco[l.arc] ||= []).push(l);
+  }
+  const salida = [];
+  for (const [arc, dias] of Object.entries(porArco)) {
+    if (!dias.every(d => estadoDe.has(d.id))) continue;
+    if (!dias.some(d => estadoDe.get(d.id).status === 'hecha')) continue;
+    const fin = Math.max(...dias.map(d => new Date(estadoDe.get(d.id).answered_at).getTime()));
+    salida.push({ arc, fecha: new Date(fin).toISOString() });
+  }
+  return salida;
+}
+
 async function traerHechas() {
   const { data, error: e } = await db
-    .from('lesson_state').select('lesson_id, interes')
+    .from('lesson_state').select('lesson_id, interes, status, answered_at')
     .eq('profile_id', perfil.id).not('answered_at', 'is', null);
   if (e) throw e;
   return data || [];
@@ -2200,6 +2483,14 @@ async function vistaHoy() {
     nivel: perfil.level,
     intereses: perfil.interest_topics
   });
+
+  // El arco: empezado, gana sobre todo lo demás; sin empezar, su día 1
+  // es una puerta que sólo cede ante el radar.
+  const arco = elegirArco(lecciones, { estados: hechas, nivel: perfil.level });
+  if (arco?.estado === 'toca' || (arco?.estado === 'puerta' && prox?.kind !== 'radar')) {
+    prox = arco.leccion;
+  }
+  const delArco = prox?.kind === 'arco' ? arco : null;
   cont = prox?.cont || null;
 
   if (!cont) {
@@ -2210,6 +2501,9 @@ async function vistaHoy() {
       semana,
       el('h1', { text: 'Por hoy está' }),
       el('p', { class: 'bajada', text: 'No hay nada nuevo que valga tus minutos. No quedó nada pendiente: lo que no apareció hoy, no te lo debés.' }),
+      arco?.estado === 'manana'
+        ? el('p', { class: 'aviso', text: `Mañana sigue el día ${arco.dia} de ${arco.total} de «${tr(NOMBRE_ARCO[arco.arc] || arco.arc)}».` })
+        : null,
       el('button', {
         class: 'primario',
         text: 'Mientras tanto, ir a la biblioteca',
@@ -2230,7 +2524,7 @@ async function vistaHoy() {
     cabecera(),
     semana,
     avisoAscenso,
-    el('p', { class: 'paso', text: { radar: 'Salió esto', frontera: 'Frontera' }[prox.kind] || 'Hoy' }),
+    delArco ? marcaDeArco(delArco) : el('p', { class: 'paso', text: { radar: 'Salió esto', frontera: 'Frontera' }[prox.kind] || 'Hoy' }),
     el('h1', { text: cont.title }),
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
     el('p', { class: 'ayuda', text: `${cont.minutes} minutos` }),
@@ -2818,12 +3112,146 @@ async function vistaReto(reto) {
 // dominio sale de lo que hacés y la actividad sale de lo que el radar
 // encontró en las últimas semanas.
 // ============================================================
+// ============================================================
+// Lo que hiciste
+// ============================================================
+// El éxito de esta app no es leer: es que la persona construya algo.
+// Y no había ningún lugar donde eso se viera. Esto junta lo que pasó
+// AFUERA de la app —lo que te propusiste y cumpliste, lo que usaste en
+// tu trabajo, los retos cerrados, la prueba de tus instrucciones— y lo
+// muestra como un registro de lo hecho.
+//
+// No rompe "nada se acumula": acá no hay nada pendiente. Todo lo que
+// aparece ya pasó y es tuyo. No hay metas, ni casilleros vacíos, ni
+// números para completar.
+// ============================================================
+function cuandoFue(fecha) {
+  const d = new Date(fecha);
+  const dias = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 864e5);
+  const en = perfil.lang === 'en';
+  if (dias <= 0) return en ? 'today' : 'hoy';
+  if (dias === 1) return en ? 'yesterday' : 'ayer';
+  if (dias < 7) return en ? `${dias} days ago` : `hace ${dias} días`;
+  return d.toLocaleDateString(en ? 'en-GB' : 'es-AR', { day: 'numeric', month: 'short' });
+}
+
+// Pura: arma la lista desde lo que devolvió la base. Se prueba sola.
+function hitosDe({ onboardedAt, prueba, estados, usos, retos, titulo, arcos = [] }) {
+  const hitos = [];
+
+  // Un arco terminado es lo más parecido a "construiste algo" que la
+  // app puede ver: cinco días que terminan con algo guardado.
+  for (const a of arcos) {
+    hitos.push({ fecha: a.fecha, tipo: 'arco', titulo: 'Lo dejaste armado', detalle: tr(NOMBRE_ARCO[a.arc] || a.arc) });
+  }
+
+  if (onboardedAt) {
+    hitos.push({ fecha: onboardedAt, tipo: 'instrucciones', titulo: 'Armaste tus instrucciones personales' });
+  }
+  if (prueba?.answer_after) {
+    hitos.push({ fecha: prueba.created_at, tipo: 'prueba', titulo: 'Probaste tus instrucciones en tu herramienta', detalle: prueba.prompt });
+  }
+  for (const r of retos) {
+    hitos.push({ fecha: r.answered_at, tipo: 'reto', titulo: 'Cerraste un reto', detalle: r.title });
+  }
+  for (const e of estados) {
+    if (e.compromiso_hecho === true && e.compromiso) {
+      hitos.push({ fecha: e.compromiso_at, tipo: 'compromiso', titulo: 'Hiciste lo que te propusiste', detalle: e.compromiso });
+    }
+  }
+  // Un mismo tema usado en dos repasos es una sola cosa hecha.
+  const yaUsadas = new Set();
+  for (const u of usos) {
+    if (yaUsadas.has(u.lesson_id)) continue;
+    yaUsadas.add(u.lesson_id);
+    hitos.push({ fecha: u.done_at, tipo: 'uso', titulo: 'Lo usaste en tu trabajo', detalle: titulo(u.lesson_id) });
+  }
+
+  return hitos
+    .filter(h => h.fecha)
+    .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+}
+
+async function loQueHiciste() {
+  const [{ data: prueba }, { data: estados }, { data: usos }, { data: retos }, { data: piezas }, lecciones] = await Promise.all([
+    db.from('before_after').select('prompt, answer_after, created_at').eq('profile_id', perfil.id).maybeSingle(),
+    db.from('lesson_state').select('lesson_id, status, answered_at, compromiso, compromiso_at, compromiso_hecho')
+      .eq('profile_id', perfil.id).not('answered_at', 'is', null),
+    db.from('reviews').select('lesson_id, done_at').eq('profile_id', perfil.id).eq('uso', true),
+    db.from('challenges').select('title, answered_at').eq('profile_id', perfil.id).eq('status', 'hecho'),
+    db.from('book_piece_state').select('piece_id').eq('profile_id', perfil.id),
+    catalogo().catch(() => [])
+  ]);
+
+  const tituloDe = Object.fromEntries(lecciones.map(l => [l.id, l.cont?.title]));
+  const hitos = hitosDe({
+    onboardedAt: perfil.onboarded_at,
+    prueba,
+    estados: estados || [],
+    usos: usos || [],
+    retos: retos || [],
+    titulo: (id) => tituloDe[id] || null,
+    arcos: arcosTerminados(lecciones, estados || [])
+  });
+
+  const leidas = (estados || []).filter(e => e.status === 'hecha' || e.status === 'ya_la_sabia').length;
+  const afuera = hitos.filter(h => h.tipo !== 'instrucciones').length;
+
+  const cifras = el('div', { class: 'hiciste-cifras' }, [
+    [String(afuera), afuera === 1 ? 'cosa hecha en tu trabajo' : 'cosas hechas en tu trabajo', true],
+    [String(leidas), leidas === 1 ? 'lección' : 'lecciones'],
+    [String((piezas || []).length), (piezas || []).length === 1 ? 'pieza de libro' : 'piezas de libros']
+  ].map(([n, texto, fuerte]) => el('div', { class: 'hiciste-cifra' + (fuerte ? ' fuerte' : '') }, [
+    el('div', { class: 'hiciste-numero', text: n }),
+    el('div', { class: 'hiciste-texto', text: texto })
+  ])));
+
+  const MOSTRAR = 5;
+  const lista = el('ol', { class: 'tarjeta hitos' });
+  const fila = (h) => el('li', { class: 'hito hito-' + h.tipo }, [
+    el('span', { class: 'hito-marca', 'aria-hidden': 'true', text: '✓' }),
+    el('div', { class: 'hito-cuerpo' }, [
+      el('div', { class: 'hito-titulo', text: h.titulo }),
+      // Lo que escribió la persona o el título de la lección: no se
+      // traduce, se muestra como está.
+      h.detalle ? el('div', { class: 'hito-detalle' }, [document.createTextNode(h.detalle)]) : null
+    ]),
+    el('span', { class: 'hito-fecha', text: cuandoFue(h.fecha) })
+  ]);
+  hitos.slice(0, MOSTRAR).forEach(h => lista.append(fila(h)));
+
+  const nodos = [
+    el('p', { class: 'paso', text: 'Lo que hiciste' }),
+    cifras,
+    lista
+  ];
+
+  if (hitos.length > MOSTRAR) {
+    const mas = el('button', {
+      class: 'link',
+      text: `Ver todo (${hitos.length})`,
+      onclick: () => { hitos.slice(MOSTRAR).forEach(h => lista.append(fila(h))); mas.remove(); }
+    });
+    nodos.push(mas);
+  }
+
+  // Si todavía no hay nada hecho afuera, se dice qué es lo que entra
+  // acá. Sin culpa: es una explicación, no un casillero vacío.
+  if (!afuera) {
+    nodos.push(el('p', { class: 'ayuda hitos-nota', text: 'Acá aparece lo que hagas afuera de la app: lo que te proponés al cerrar una lección y cumplís, lo que usás en tu trabajo y los retos que cerrás.' }));
+  }
+
+  return el('section', { class: 'hiciste' }, nodos);
+}
+
 async function vistaMapa() {
-  const [{ data: topics }, { data: dominios }, { data: hechas }, { data: senales }] = await Promise.all([
+  const [{ data: topics }, { data: dominios }, { data: hechas }, { data: senales }, hiciste] = await Promise.all([
     db.from('topics').select('id, slug, name_es, name_en, kind, level_floor, sort').order('sort'),
     db.from('topic_mastery').select('topic_id, mastery, evidence').eq('profile_id', perfil.id),
     db.from('lesson_state').select('lesson_id, status').eq('profile_id', perfil.id).not('answered_at', 'is', null),
-    db.from('signals').select('topic_id').eq('status', 'promovida')
+    db.from('signals').select('topic_id').eq('status', 'promovida'),
+    // Si esto falla, el mapa sale igual: es una sección, no la pantalla.
+    loQueHiciste().catch(() => null)
   ]);
 
   // Dominio por evidencia externa, si lo hay.
@@ -2862,7 +3290,10 @@ async function vistaMapa() {
     : 0;
 
   const nodos = [
-    el('p', { class: 'paso', text: 'Tu posición' }),
+    // Lo hecho va arriba: es lo más concreto de la pantalla. El mapa
+    // dice dónde estás; esto dice qué hiciste para llegar.
+    hiciste,
+    el('p', { class: hiciste ? 'paso paso-separado' : 'paso', text: 'Tu posición' }),
 
     // El número grande como protagonista, igual que en los paneles
     // buenos: un dato que se lee de una y el resto alrededor.

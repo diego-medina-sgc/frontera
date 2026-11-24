@@ -29,7 +29,15 @@
   </div>
 
   <main id="vista" aria-live="polite">
-    <div class="cargando">Cargando…</div>
+    <!-- La forma de lo que viene, no la palabra "Cargando". -->
+    <div class="esqueleto" aria-busy="true" aria-label="Cargando">
+      <div class="hueso hueso-chico"></div>
+      <div class="hueso hueso-titulo"></div>
+      <div class="hueso hueso-titulo corto"></div>
+      <div class="hueso hueso-linea"></div>
+      <div class="hueso hueso-linea"></div>
+      <div class="hueso hueso-tarjeta"></div>
+    </div>
   </main>
 
   <!-- La navegación va después del contenido en el DOM y fija abajo en

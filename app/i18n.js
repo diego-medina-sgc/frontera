@@ -320,7 +320,27 @@ const EN = {
   'Dominio promedio': "Average mastery",
   'Tu frontera': "Your frontier",
   'Fundamentos': "Fundamentals",
-  'Un nodo apagado no significa que no sepas: significa que la app todavía no tiene evidencia de que te muevas ahí. La barra sale de lo que hacés; el número verde, de lo que el campo movió este tiempo.': "A dimmed node doesn't mean you don't know it: it means the app doesn't yet have evidence that you're active there. The bar comes from what you do; the green number, from what the field has moved lately."
+  'Un nodo apagado no significa que no sepas: significa que la app todavía no tiene evidencia de que te muevas ahí. La barra sale de lo que hacés; el número verde, de lo que el campo movió este tiempo.': "A dimmed node doesn't mean you don't know it: it means the app doesn't yet have evidence that you're active there. The bar comes from what you do; the green number, from what the field has moved lately.",
+
+  // ---- Lo que hiciste ----
+  'Lo que hiciste': "What you've done",
+  'cosa hecha en tu trabajo': "thing done at work",
+  'cosas hechas en tu trabajo': "things done at work",
+  'lección': "lesson",
+  'lecciones': "lessons",
+  'pieza de libro': "book piece",
+  'piezas de libros': "book pieces",
+  'Armaste tus instrucciones personales': "You set up your personal instructions",
+  'Probaste tus instrucciones en tu herramienta': "You tested your instructions in your tool",
+  'Cerraste un reto': "You finished a challenge",
+  'Hiciste lo que te propusiste': "You did what you set out to do",
+  'Lo usaste en tu trabajo': "You used it at work",
+  'Acá aparece lo que hagas afuera de la app: lo que te proponés al cerrar una lección y cumplís, lo que usás en tu trabajo y los retos que cerrás.': "This is where what you do outside the app shows up: what you commit to when closing a lesson and then do, what you use at work, and the challenges you finish.",
+  'Cargando': "Loading",
+
+  // ---- Arcos ----
+  'El mail que escribís siempre': "The email you always write",
+  'Lo dejaste armado': "You set it up for good"
 };
 
 // ------------------------------------------------------------
@@ -373,6 +393,11 @@ const PATRONES = [
   [/^(.+) — donde más se mueve el campo y menos te movés vos\.$/s,
     (m) => `${m[1]} — where the field moves the most and you move the least.`],
   [/^(\d+) novedades$/, (m) => `${m[1]} ${pl(m[1], 'update', 'updates')}`],
+  [/^Ver todo \((\d+)\)$/, (m) => `See all (${m[1]})`],
+
+  // arcos (el nombre del arco ya llega traducido)
+  [/^Día (\d+) de (\d+) · (.+)$/s, (m) => `Day ${m[1]} of ${m[2]} · ${m[3]}`],
+  [/^Mañana sigue el día (\d+) de (\d+) de «(.+)»\.$/s, (m) => `Tomorrow: day ${m[1]} of ${m[2]} of "${m[3]}".`],
 
   // errores con mensaje técnico al final
   [/^No pude leer tu perfil: (.*)$/s, (m) => `Couldn't read your profile: ${m[1]}`],

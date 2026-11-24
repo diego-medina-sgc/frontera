@@ -1205,3 +1205,389 @@ article .plegable p:first-of-type { margin-top: 2px; }
 @media (max-width: 480px) {
   h1 { font-size: 27px; }
 }
+
+/* ============================================================
+   PORTADA — lo primero que ve alguien que no conoce la app
+   ============================================================
+   Antes era un formulario. Ahora muestra lo que la app hace antes de
+   pedir nada: la misma pregunta, sin y con instrucciones. El ejemplo
+   se arma como una conversación (la pregunta a la derecha, la
+   respuesta abajo) porque es exactamente lo que la persona va a ver
+   en su herramienta.
+   ============================================================ */
+.portada-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -6px 0 30px;
+}
+
+.portada-marca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -.01em;
+}
+
+.portada-marca img { border-radius: 8px; display: block; }
+
+.portada-entrar {
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+h1.portada-titulo {
+  font-size: clamp(33px, 9.4vw, 46px);
+  line-height: 1.04;
+  letter-spacing: -.038em;
+  margin-bottom: 14px;
+}
+
+.demo {
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: 22px;
+  padding: 18px 18px 16px;
+  margin: 4px 0 20px;
+  box-shadow: 0 18px 40px -26px rgba(0, 0, 0, .28);
+}
+
+.demo .etiqueta { margin-bottom: 14px; }
+
+.demo-pregunta {
+  width: fit-content;
+  max-width: 86%;
+  margin: 0 0 16px auto;
+  padding: 10px 14px;
+  border-radius: 18px 18px 6px 18px;
+  background: var(--negro);
+  color: var(--sobre-negro);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+/* Control segmentado: dos estados del mismo dato, no dos botones. */
+.segmentos {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--texto) 7%, var(--tarjeta));
+}
+
+.segmentos button {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--texto-2);
+  font-size: 13.5px;
+  transition: background .2s, color .2s, box-shadow .2s;
+}
+
+.segmentos button[aria-pressed="true"] {
+  background: var(--tarjeta);
+  color: var(--texto);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .14), 0 0 0 .5px rgba(0, 0, 0, .04);
+}
+
+/* En oscuro la tarjeta es más oscura que el riel: el elegido tiene que
+   subir, no hundirse. */
+:root[data-tema="oscuro"] .segmentos button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--texto) 18%, var(--tarjeta));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]):not([data-tema="sepia"]) .segmentos button[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--texto) 18%, var(--tarjeta));
+  }
+}
+
+/* Alto fijo: si la caja cambiara de tamaño al tocar, todo lo de abajo
+   saltaría, y el ojo pierde dónde estaba. */
+.demo-respuesta { min-height: 23.5em; }
+.demo-respuesta article {
+  font-family: var(--ui);
+  font-size: 15.5px;
+  line-height: 1.55;
+  font-size-adjust: none;
+  hyphens: manual;
+}
+.demo-respuesta article p { margin: 0 0 .75em; }
+.demo-respuesta[data-cual="sin"] article { color: var(--texto-2); }
+/* El color de la persona es para lo que sirve; en la respuesta mala
+   las negritas quedan en tinta. */
+.demo-respuesta[data-cual="sin"] article strong { color: var(--texto); }
+.demo-instrucciones { margin-top: 16px; }
+.demo-instrucciones .etiqueta { margin-bottom: 8px; }
+.demo-instrucciones .instrucciones { margin: 0; font-size: 12.5px; padding: 14px; }
+.demo-respuesta.cambia { animation: aparecer .22s ease both; }
+
+.demo-pie {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--borde);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--texto-3);
+}
+
+.demo-cierre { color: var(--texto-2); font-size: 16px; margin-bottom: 32px; }
+
+.pasos-portada {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px;
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.pasos-portada li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--borde);
+}
+.pasos-portada li:last-child { border-bottom: none; }
+.pasos-portada strong { display: block; font-weight: 600; }
+.pasos-portada span:not(.pasos-num) { color: var(--texto-2); font-size: 14.5px; line-height: 1.45; }
+
+.pasos-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--relleno);
+  color: var(--sobre-relleno);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.portada-promesa { color: var(--texto-2); font-size: 14px; margin-bottom: 40px; }
+
+.entrar {
+  padding-top: 4px;
+  border-top: 1px solid var(--borde);
+  scroll-margin-top: 20px;
+}
+.entrar h2 { margin-top: 26px; }
+.entrar-nota { margin: 16px 0 0; }
+
+/* ============================================================
+   LO QUE HICISTE — arriba del mapa
+   ============================================================ */
+.hiciste-cifras {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.hiciste-cifra {
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 14px 14px 12px;
+  min-width: 0;
+}
+
+/* La que importa lleva el color de la persona: es lo que hizo afuera. */
+.hiciste-cifra.fuerte {
+  background: var(--marca-suave);
+  border-color: var(--marca-borde);
+}
+.hiciste-cifra.fuerte .hiciste-numero { color: var(--marca); }
+
+.hiciste-numero {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hiciste-texto {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--texto-2);
+}
+
+.hitos { list-style: none; padding: 4px 18px; margin-bottom: 4px; }
+
+.hito {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  margin: 0;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--borde);
+}
+.hito:last-child { border-bottom: none; }
+
+.hito-marca {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--relleno);
+  color: var(--sobre-relleno);
+  font-size: 12px;
+  font-weight: 700;
+}
+/* Lo que pasó adentro de la app (las instrucciones) va más callado que
+   lo que pasó afuera. */
+.hito-instrucciones .hito-marca {
+  background: var(--marca-suave);
+  color: var(--marca);
+}
+
+.hito-cuerpo { min-width: 0; }
+.hito-titulo { font-size: 15px; font-weight: 600; line-height: 1.35; }
+.hito-detalle {
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--texto-2);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hito-fecha {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: var(--texto-3);
+  white-space: nowrap;
+  padding-top: 3px;
+}
+
+.hitos-nota { margin: 10px 0 0; }
+
+/* ---------- arcos ---------- */
+.arco-marca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.arco-marca .paso { margin: 0; }
+
+.arco-puntos { display: flex; gap: 5px; flex: none; }
+.arco-puntos span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--marca-borde);
+}
+.arco-puntos .hecho { background: var(--relleno); border-color: var(--relleno); }
+.arco-puntos .hoy { border-color: var(--marca); box-shadow: 0 0 0 2px var(--marca-suave); }
+.paso-separado { margin-top: 34px; }
+
+/* ============================================================
+   MOVIMIENTO
+   ============================================================
+   Poco y corto. Una pantalla que entra con un fundido de 180 ms se
+   siente como una app; una que aparece de golpe, como una página que
+   recargó. Nada de esto dura lo suficiente como para esperarlo.
+   ============================================================ */
+/* `backwards` y no `both`: terminada la animación no queda nada
+   aplicado sobre <main>, ni siquiera un contexto de apilamiento que
+   cambie qué panel fijo queda arriba de cuál. */
+main.entra { animation: entrar .18s ease-out backwards; }
+
+@keyframes entrar {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Lo que se aprieta cede un poco más que el resto: es la respuesta
+   física de "esto lo tocaste". */
+.primario:active, .tarjeta:is(button):active, .portada-entrar:active { transform: scale(.97); }
+.primario, .tarjeta:is(button) { transition: background .15s, border-color .15s, transform .12s cubic-bezier(.2, .8, .2, 1); }
+
+/* El esqueleto: la forma de lo que viene, latiendo despacio. */
+.esqueleto { padding-top: 6px; }
+.hueso {
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--texto) 7%, var(--fondo));
+  margin-bottom: 12px;
+  animation: latir 1.3s ease-in-out infinite;
+}
+.hueso-chico { width: 34%; height: 11px; margin-bottom: 22px; }
+.hueso-titulo { width: 88%; height: 30px; }
+.hueso-titulo.corto { width: 56%; margin-bottom: 22px; }
+.hueso-linea { width: 100%; height: 14px; }
+.hueso-tarjeta { height: 120px; border-radius: var(--radio); margin-top: 24px; }
+
+@keyframes latir {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .55; }
+}
+
+/* El tilde de "hecho". Pasa por encima de todo y no se puede tocar. */
+.hecho-capa {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.hecho-capa svg {
+  width: 84px;
+  height: 84px;
+  padding: 16px;
+  border-radius: 50%;
+  background: var(--relleno);
+  color: var(--sobre-relleno);
+  box-shadow: 0 14px 40px -12px rgba(0, 0, 0, .35);
+  animation: hecho-entra .9s cubic-bezier(.2, .9, .25, 1.2) both;
+}
+
+.hecho-capa path {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: hecho-trazo .32s .12s ease-out forwards;
+}
+
+@keyframes hecho-entra {
+  0% { opacity: 0; transform: scale(.6); }
+  22% { opacity: 1; transform: scale(1); }
+  75% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(.94); }
+}
+
+@keyframes hecho-trazo { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  main.entra, .demo-respuesta.cambia, .hueso { animation: none; }
+  .primario:active, .tarjeta:is(button):active, .portada-entrar:active { transform: none; }
+}

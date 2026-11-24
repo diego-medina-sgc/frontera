@@ -56,7 +56,7 @@ const [
   perfiles, estados, repasos, retos, senales, estadoLibros
 ] = await Promise.all([
   traer('topics?select=id,slug,name_es,kind,level_floor,terms'),
-  traer('lessons?select=id,slug,kind,topic_id,level_floor,level_ceiling,track_order,published'),
+  traer('lessons?select=id,slug,kind,topic_id,level_floor,level_ceiling,track_order,published,arc,arc_day'),
   traer('lesson_contents?select=id,lesson_id,lang,tool_id,title,body_md,minutes'),
   traer('books?select=id,slug,title,themes,terms'),
   traer('book_pieces?select=id,book_id,lang,for_read_state,idx,title,body_md'),
@@ -298,6 +298,23 @@ for (const b of libros) {
 const hechosSinDato = retos.filter(r => r.status === 'hecho' && r.dificultad == null);
 if (hechosSinDato.length) {
   aviso('Retos hechos sin dificultad', `${hechosSinDato.length}: el calibre del próximo va a ciegas`);
+}
+
+// 23. Un arco se lee un día por vez y en orden: si le falta un día, la
+//     persona queda clavada en el anterior para siempre. Y como lo lee
+//     cualquiera del círculo, cada día tiene que estar en los dos idiomas.
+const arcos = {};
+for (const l of lessons.filter(l => l.kind === 'arco' && l.published)) {
+  if (!l.arc || !l.arc_day) { falla('Lección de arco sin arco o sin día', l.slug); continue; }
+  (arcos[l.arc] ||= []).push(l);
+}
+for (const [arco, dias] of Object.entries(arcos)) {
+  const orden = dias.map(d => d.arc_day).sort((a, b) => a - b);
+  if (orden.some((n, i) => n !== i + 1)) falla('Arco con días salteados o repetidos', `${arco}: ${orden.join(', ')}`);
+  for (const d of dias) {
+    const langs = new Set(contenidos.filter(c => c.lesson_id === d.id && !c.tool_id).map(c => c.lang));
+    if (!langs.has('es') || !langs.has('en')) falla('Día de arco sin los dos idiomas', `${d.slug}: ${[...langs].join(', ') || 'ninguno'}`);
+  }
 }
 
 // ------------------------------------------------------------
