@@ -340,6 +340,7 @@ const EN = {
 
   // ---- Arcos ----
   'El mail que escribís siempre': "The email you always write",
+  'El informe de todos los meses': "The monthly report",
   'Lo dejaste armado': "You set it up for good"
 };
 

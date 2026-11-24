@@ -2070,7 +2070,11 @@ async function vistaRepaso(repaso) {
 
   const dias = Math.round((Date.now() - new Date(repaso.due_on).getTime()) / 864e5);
 
+  // El repaso es una de las caras de Hoy, y Ajustes se entra desde Hoy:
+  // sin la cabecera, el día que tocaba un repaso no había forma de
+  // llegar a Ajustes.
   pintar(
+    cabecera(),
     el('p', { class: 'paso', text: 'Repaso' }),
     el('h1', { text: cont.title }),
     cont.hook ? el('p', { class: 'bajada', text: cont.hook }) : null,
@@ -2298,7 +2302,8 @@ function elegirLeccion(lecciones, { hechas, apagados, nivel, intereses }) {
 //     techo del arco. Después del radar, antes de frontera y track.
 // ============================================================
 const NOMBRE_ARCO = {
-  'mail-repetido': 'El mail que escribís siempre'
+  'mail-repetido': 'El mail que escribís siempre',
+  'informe-mensual': 'El informe de todos los meses'
 };
 
 const DIAS_DEL_ARCO = 10;
