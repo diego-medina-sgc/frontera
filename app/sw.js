@@ -14,7 +14,7 @@
 //
 // Al cambiar algo acá, subir el número de CACHE.
 
-const CACHE = 'frontera-v16';
+const CACHE = 'frontera-v17';
 
 // Solo lo indispensable para que algo se vea sin conexión. El código no
 // entra: que lo traiga la red siempre.
@@ -59,5 +59,35 @@ self.addEventListener('fetch', (e) => {
         return r;
       })
       .catch(() => caches.match(e.request).then((r) => r || caches.match('./index.html')))
+  );
+});
+
+// ------------------------------------------------------------
+// Avisos (ver Ajustes → Avisos y la función `avisar`)
+// ------------------------------------------------------------
+// Uno por día hábil como máximo. El texto lo decide el servidor; acá
+// sólo se muestra. Sin badge: el ícono no muestra números.
+self.addEventListener('push', (e) => {
+  let datos = {};
+  try { datos = e.data ? e.data.json() : {}; } catch { /* queda vacío */ }
+  e.waitUntil(
+    self.registration.showNotification(datos.titulo || 'Frontera', {
+      body: datos.cuerpo || '',
+      icon: './icono-192.png',
+      tag: 'frontera-hoy',
+      data: { url: datos.url || './' }
+    })
+  );
+});
+
+// Tocar el aviso abre la app (o la trae al frente si ya estaba abierta).
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const destino = new URL(e.notification.data?.url || './', self.location.href).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((ventanas) => {
+      const abierta = ventanas.find((v) => v.url.startsWith(self.registration.scope));
+      return abierta ? abierta.focus() : self.clients.openWindow(destino);
+    })
   );
 });

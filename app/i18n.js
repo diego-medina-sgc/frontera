@@ -412,7 +412,20 @@ const EN = {
   'Borrando…': "Deleting…",
   'No se pudo borrar. Probá de nuevo.': "It couldn't be deleted. Please try again.",
   'Esta cuenta administra el círculo y no se puede borrar desde la app.': "This account runs the circle and can't be deleted from the app.",
-  'Falta la confirmación.': "Confirmation is missing."
+  'Falta la confirmación.': "Confirmation is missing.",
+
+  // ---- Ajustes: avisos ----
+  'Avisos': "Notifications",
+  'Uno por día hábil, a eso de las 9, sólo si ese día todavía no entraste. Sin números ni rachas, y nada se acumula.': "One per weekday, around 9am, only if you haven't been in yet that day. No numbers or streaks, and nothing piles up.",
+  'Prender los avisos': "Turn on notifications",
+  'Avisos prendidos ✓': "Notifications on ✓",
+  'En iPhone los avisos funcionan con la app instalada. Mirá Instalar, más arriba.': "On iPhone, notifications work once the app is installed. See Install, above.",
+  'Este navegador no permite avisos.': "This browser doesn't allow notifications.",
+  'Los avisos están bloqueados para esta página en la configuración del navegador.': "Notifications are blocked for this page in your browser settings.",
+  'Listo, no te aviso más.': "Done, no more notifications.",
+  'Sin permiso del navegador no te puedo avisar.': "Without the browser's permission I can't notify you.",
+  'Listo. El próximo día hábil, a la mañana.': "Done. Next weekday, in the morning.",
+  'No se pudieron prender los avisos en este navegador.': "Notifications couldn't be turned on in this browser."
 };
 
 // ------------------------------------------------------------

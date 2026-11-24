@@ -8,7 +8,7 @@
 // ============================================================
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/+esm';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
+import { SUPABASE_URL, SUPABASE_KEY, VAPID_PUBLICA } from './config.js';
 import { setLang, tr } from './i18n.js';
 import { GLOSARIO, MAX_POR_LECTURA } from './glosario.js';
 
@@ -1025,6 +1025,110 @@ function grupoHerramientas() {
 }
 
 // ------------------------------------------------------------
+// Avisos: uno por día hábil, a la mañana, si ese día no entraste
+// ------------------------------------------------------------
+// Opcionales y apagados de entrada. Las reglas (lunes a viernes, uno
+// por día, sólo si no hiciste nada) viven en la función `avisar` del
+// servidor; acá sólo se prende y se apaga. No hay badges ni números:
+// el aviso no dice cuánto te falta, porque no te falta nada.
+const b64aBytes = (b64) => {
+  const s = atob((b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(s, c => c.charCodeAt(0));
+};
+
+function grupoAvisos() {
+  const dicho = el('p', { class: 'ayuda' });
+  const boton = el('button', { class: 'chip', 'aria-pressed': 'false', text: 'Prender los avisos' });
+  const grupo = el('div', { class: 'grupo' }, [
+    el('p', { class: 'etiqueta', text: 'Avisos' }),
+    el('p', { class: 'ayuda', text: 'Uno por día hábil, a eso de las 9, sólo si ese día todavía no entraste. Sin números ni rachas, y nada se acumula.' }),
+    boton,
+    dicho
+  ]);
+
+  const soporta = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  if (!soporta) {
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    boton.hidden = true;
+    dicho.textContent = tr(ios
+      ? 'En iPhone los avisos funcionan con la app instalada. Mirá Instalar, más arriba.'
+      : 'Este navegador no permite avisos.');
+    return grupo;
+  }
+
+  const pintarEstado = (prendido) => {
+    boton.setAttribute('aria-pressed', String(prendido));
+    boton.textContent = tr(prendido ? 'Avisos prendidos ✓' : 'Prender los avisos');
+  };
+
+  // El service worker puede no estar listo nunca (por ejemplo, en una
+  // copia local): no se espera para siempre.
+  const registro = () => Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise((_, no) => setTimeout(() => no(new Error('sin service worker')), 4000))
+  ]);
+
+  registro()
+    .then(reg => reg.pushManager.getSubscription())
+    .then(sub => pintarEstado(Boolean(sub)))
+    .catch(() => { /* queda apagado */ });
+
+  if (Notification.permission === 'denied') {
+    dicho.textContent = tr('Los avisos están bloqueados para esta página en la configuración del navegador.');
+  }
+
+  boton.addEventListener('click', async () => {
+    boton.disabled = true;
+    dicho.textContent = '';
+    try {
+      const reg = await registro();
+      const actual = await reg.pushManager.getSubscription();
+
+      if (actual) {
+        await db.from('push_subscriptions').delete().eq('endpoint', actual.endpoint);
+        await actual.unsubscribe();
+        pintarEstado(false);
+        dicho.textContent = tr('Listo, no te aviso más.');
+        return;
+      }
+
+      const permiso = await Notification.requestPermission();
+      if (permiso !== 'granted') {
+        dicho.textContent = tr('Sin permiso del navegador no te puedo avisar.');
+        return;
+      }
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: b64aBytes(VAPID_PUBLICA)
+      });
+      const j = sub.toJSON();
+      const { error: e } = await db.from('push_subscriptions').upsert({
+        profile_id: perfil.id,
+        endpoint: j.endpoint,
+        p256dh: j.keys.p256dh,
+        auth: j.keys.auth
+      }, { onConflict: 'endpoint' });
+
+      if (e) {
+        await sub.unsubscribe();
+        dicho.textContent = tr('No se pudo guardar. Probá de nuevo.');
+        return;
+      }
+      pintarEstado(true);
+      dicho.textContent = tr('Listo. El próximo día hábil, a la mañana.');
+    } catch {
+      dicho.textContent = tr('No se pudieron prender los avisos en este navegador.');
+    } finally {
+      boton.disabled = false;
+    }
+  });
+
+  return grupo;
+}
+
+// ------------------------------------------------------------
 // Cuenta: salir, y borrarla
 // ------------------------------------------------------------
 // Borrar la cuenta lo hace la edge function `borrar-cuenta`, porque el
@@ -1436,6 +1540,8 @@ async function vistaPerfil() {
     grupoHerramientas(),
 
     grupoInstalar(),
+
+    grupoAvisos(),
 
     grupoClave(),
 
