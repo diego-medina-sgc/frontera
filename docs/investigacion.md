@@ -1,5 +1,12 @@
 # Investigación de Frontera
 
+> **Postergado (24/11).** Estos estudios se hacen cuando la app esté
+> lo bastante buena como para compartirla con conocidos porque les
+> sirve, no antes. Hasta entonces la única persona del estudio es quien
+> la construyó, y lo que se mide es si la app ya es buena para él:
+> `node jobs/investigacion.mjs` corre el instrumento de la sección
+> "El instrumento que ya está adentro", sólo con cifras.
+
 ## La pregunta de riesgo
 
 No es si la app se entiende. Es **si a alguien además de Diego le duele
