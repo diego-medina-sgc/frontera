@@ -10,6 +10,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { setLang, tr } from './i18n.js';
+import { GLOSARIO, MAX_POR_LECTURA } from './glosario.js';
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -459,9 +460,75 @@ function panelAjustes(ganchos = {}) {
 }
 
 // `clave` identifica la pieza para recordar dónde quedaste.
+// ------------------------------------------------------------
+// Glosario: la primera vez que aparece un término, se puede tocar
+// ------------------------------------------------------------
+// Sólo para niveles 0 a 2: a quien construye no se le subraya
+// "modelo". Las palabras están en glosario.js, con su porqué.
+// La definición se abre debajo del párrafo, no en una ventana: no
+// tapa el texto, no se escapa del lector, y se cierra tocando de nuevo.
+function marcarGlosario(raiz) {
+  if (!perfil || perfil.level > 2) return;
+  const lang = perfil.lang === 'en' ? 'en' : 'es';
+  const pendientes = [...GLOSARIO];
+  let marcadas = 0;
+
+  const textos = [];
+  const recorrido = document.createTreeWalker(raiz, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => n.parentElement?.closest('h2, h3, summary, button, .glosa-caja')
+      ? NodeFilter.FILTER_REJECT
+      : NodeFilter.FILTER_ACCEPT
+  });
+  while (recorrido.nextNode()) textos.push(recorrido.currentNode);
+
+  for (let i = 0; i < textos.length && marcadas < MAX_POR_LECTURA && pendientes.length; i++) {
+    const nodo = textos[i];
+    let mejor = null;
+    for (const g of pendientes) {
+      const m = g[lang].exec(nodo.data);
+      if (m && (!mejor || m.index < mejor.m.index)) mejor = { g, m };
+    }
+    if (!mejor) continue;
+
+    const { g, m } = mejor;
+    const palabra = m[0];
+    const resto = document.createTextNode(nodo.data.slice(m.index + palabra.length));
+    nodo.data = nodo.data.slice(0, m.index);
+
+    const boton = el('button', { class: 'glosa', type: 'button', 'aria-expanded': 'false' });
+    boton.textContent = palabra;
+    let caja = null;
+    boton.addEventListener('click', () => {
+      if (caja) {
+        caja.remove();
+        caja = null;
+        boton.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      caja = document.createElement('div');
+      caja.className = 'glosa-caja';
+      const t = document.createElement('strong');
+      t.textContent = palabra;
+      caja.append(t, document.createTextNode(' · ' + g.def[lang]));
+      // En un ítem de lista va adentro del ítem; si no, debajo del párrafo.
+      const bloque = boton.closest('li, p');
+      if (bloque?.tagName === 'LI') bloque.append(caja);
+      else (bloque || boton).after(caja);
+      boton.setAttribute('aria-expanded', 'true');
+    });
+
+    nodo.after(boton, resto);
+    // Lo que quedó después de la palabra puede tener otro término.
+    textos.splice(i + 1, 0, resto);
+    pendientes.splice(pendientes.indexOf(g), 1);
+    marcadas++;
+  }
+}
+
 function lector({ epigrafe, titulo, bajada, cuerpoMd, extras, pie, cierre, clave, minutos, volver }) {
   const cuerpo = el('article');
   cuerpo.append(markdown(cuerpoMd));
+  marcarGlosario(cuerpo);
 
   // El total sale de lo que dice la ficha, no de un cálculo propio: si
   // la tarjeta prometió nueve minutos y el lector dice tres, el que
@@ -909,6 +976,107 @@ function filaIdioma(idiomas) {
 // frontera. Alguien que cambiaba de trabajo quedaba con el contexto de
 // otra vida y sin forma de corregirlo. Editarlo acá recalcula los
 // intereses en el acto, así que lo que escribe cambia lo que recibe.
+// ------------------------------------------------------------
+// Tus herramientas: las que usás, cambiables después del Paso 1
+// ------------------------------------------------------------
+// Antes sólo se elegían en el Paso 1 y quedaban para siempre. Quien
+// arrancó sin ninguna no tenía dónde marcar la que empezó a usar, y
+// la capa de ejecución de cada lección sale de acá.
+function grupoHerramientas() {
+  const dicho = el('p', { class: 'ayuda' });
+  const caja = el('div', { class: 'opciones' });
+
+  for (const h of herramientas) {
+    caja.append(el('button', {
+      class: 'chip',
+      'aria-pressed': String(misHerramientas.includes(h.id)),
+      text: h.name,
+      onclick: async (ev) => {
+        const b = ev.currentTarget;
+        const on = b.getAttribute('aria-pressed') === 'true';
+        b.disabled = true;
+        const { error: e } = on
+          ? await db.from('profile_tools').delete()
+              .eq('profile_id', perfil.id).eq('tool_id', h.id).eq('relation', 'usa')
+          : await db.from('profile_tools').upsert(
+              { profile_id: perfil.id, tool_id: h.id, relation: 'usa' },
+              { onConflict: 'profile_id,tool_id,relation' }
+            );
+        b.disabled = false;
+        if (e) {
+          dicho.textContent = tr('No se pudo guardar. Probá de nuevo.');
+          return;
+        }
+        b.setAttribute('aria-pressed', String(!on));
+        misHerramientas = on
+          ? misHerramientas.filter(id => id !== h.id)
+          : [...misHerramientas, h.id];
+        dicho.textContent = tr('Guardado ✓');
+      }
+    }));
+  }
+
+  return el('div', { class: 'grupo' }, [
+    el('p', { class: 'etiqueta', text: 'Tus herramientas' }),
+    el('p', { class: 'ayuda', text: 'Las que usás hoy. Lo que te enseñe va a venir explicado para estas.' }),
+    caja,
+    dicho
+  ]);
+}
+
+// ------------------------------------------------------------
+// Cuenta: salir, y borrarla
+// ------------------------------------------------------------
+// Borrar la cuenta lo hace la edge function `borrar-cuenta`, porque el
+// navegador no puede borrar un usuario (y está bien que no pueda). La
+// función valida la sesión de quien llama y sólo borra esa cuenta.
+// Todo lo de la persona cuelga de su perfil con `on delete cascade`.
+//
+// La confirmación es escribir una palabra, no un segundo botón: un
+// toque de más no puede borrar meses de uso.
+function grupoCuenta() {
+  const palabra = tr('BORRAR');
+  const confirma = el('input', { type: 'text', id: 'confirma-borrar', autocomplete: 'off', autocapitalize: 'characters', placeholder: palabra });
+  const msj = el('div');
+  const borrar = el('button', { class: 'peligro', type: 'submit', text: 'Borrar mi cuenta para siempre' });
+
+  const confirmar = async (ev) => {
+    ev.preventDefault();
+    if (confirma.value.trim().toUpperCase() !== palabra) {
+      return msj.replaceChildren(error(`Escribí ${palabra} para confirmar.`));
+    }
+    borrar.disabled = true;
+    msj.replaceChildren(el('p', { class: 'ayuda', text: 'Borrando…' }));
+    const { data, error: e } = await db.functions.invoke('borrar-cuenta', { body: { confirmo: true } });
+    if (e || !data?.ok) {
+      borrar.disabled = false;
+      let texto = 'No se pudo borrar. Probá de nuevo.';
+      try { texto = (await e?.context?.json())?.error || data?.error || texto; } catch { /* queda el genérico */ }
+      return msj.replaceChildren(error(texto));
+    }
+    await db.auth.signOut();
+    location.reload();
+  };
+
+  const plegable = el('details', { class: 'plegable borrar-cuenta' }, [
+    el('summary', { text: 'Borrar la cuenta' }),
+    el('p', { class: 'ayuda', text: 'Se borra todo: tus instrucciones, lo que leíste, tus retos y tus respuestas. No se puede deshacer, y para volver alguien del círculo te tiene que sumar de nuevo.' }),
+    el('form', { onsubmit: confirmar }, [
+      el('label', { for: 'confirma-borrar', text: `Escribí ${palabra} para confirmar` }),
+      confirma,
+      msj,
+      borrar
+    ])
+  ]);
+
+  return el('div', { class: 'grupo' }, [
+    el('p', { class: 'etiqueta', text: 'Cuenta' }),
+    mail ? el('p', { class: 'cuenta-mail', text: mail }) : null,
+    el('button', { class: 'link', text: 'Salir de la cuenta', onclick: salir }),
+    plegable
+  ]);
+}
+
 function grupoVos() {
   const nombre = el('input', {
     type: 'text',
@@ -1265,6 +1433,8 @@ async function vistaPerfil() {
 
     grupoVos(),
 
+    grupoHerramientas(),
+
     grupoInstalar(),
 
     grupoClave(),
@@ -1272,10 +1442,11 @@ async function vistaPerfil() {
     grupoCirculo(),
 
     el('div', { class: 'grupo' }, [
-      el('p', { class: 'etiqueta', text: 'Cuenta' }),
-      mail ? el('p', { class: 'cuenta-mail', text: mail }) : null,
-      el('button', { class: 'link', text: 'Salir de la cuenta', onclick: salir })
-    ])
+      el('p', { class: 'etiqueta', text: 'Ayuda' }),
+      el('p', { class: 'ayuda-texto', text: 'Si algo no anda o tenés una duda, escribile a quien te sumó al círculo. Contale qué estabas haciendo y qué viste: con eso alcanza.' })
+    ]),
+
+    grupoCuenta()
   );
 
 }
@@ -2141,8 +2312,14 @@ async function vistaDondePegar() {
     el('h1', { text: 'Pegalo acá' })
   ];
 
+  // Sin ninguna herramienta, esto era un callejón: decía "no sé dónde
+  // mandarte", ofrecía igual "Ya lo pegué" y llevaba a una prueba que
+  // pide pegar respuestas de una herramienta que la persona no tiene.
+  // Ahora se le ofrece elegir una, o seguir sin ella.
+  if (!usadas.length) return vistaElegirUna();
+
   if (!capas.length) {
-    nodos.push(el('p', { class: 'bajada', text: 'No marcaste ninguna herramienta, así que no sé dónde mandarte. Guardá el texto: cuando elijas una, te muestro exactamente dónde va.' }));
+    nodos.push(el('p', { class: 'bajada', text: 'Todavía no tengo la guía para la herramienta que marcaste. Buscá en su configuración algo como "instrucciones personalizadas" o "personalización" y pegalo ahí.' }));
   }
 
   for (const c of capas) {
@@ -2153,6 +2330,49 @@ async function vistaDondePegar() {
 
   nodos.push(el('button', { class: 'primario', onclick: vistaPrueba, text: 'Ya lo pegué' }));
   pintar(...nodos);
+}
+
+// ------------------------------------------------------------
+// Para quien todavía no usa ninguna herramienta
+// ------------------------------------------------------------
+// Sólo se ofrecen las que tienen la guía de dónde pegar el texto: dar
+// a elegir una que después no sabemos explicar es repetir el callejón.
+const PARA_EMPEZAR = ['chatgpt', 'gemini', 'claude'];
+
+function vistaElegirUna() {
+  const opciones = herramientas.filter(h => PARA_EMPEZAR.includes(h.id));
+
+  const elegir = async (h) => {
+    elegidas.usa.add(h.id);
+    misHerramientas = [...elegidas.usa];
+    await db.from('profile_tools').upsert(
+      { profile_id: perfil.id, tool_id: h.id, relation: 'usa' },
+      { onConflict: 'profile_id,tool_id,relation' }
+    );
+    vistaDondePegar();
+  };
+
+  pintar(
+    el('p', { class: 'paso', text: 'Dónde va' }),
+    el('h1', { text: 'Primero, elegí una' }),
+    el('p', { class: 'bajada', text: 'Tus instrucciones tienen que estar adentro de una herramienta de IA para servir. Estas tres son gratis para empezar, en la web y en el teléfono, y alcanzan para todo lo que viene.' }),
+    el('p', { class: 'ayuda', text: 'Si no sabés cuál, elegí la que usa alguien cerca tuyo: vas a tener a quién preguntarle.' }),
+    ...opciones.map(h => el('button', { class: 'tarjeta libro', onclick: () => elegir(h) }, [
+      el('span', { class: 'titulo', text: h.name }),
+      el('span', { class: 'autor', text: 'Te muestro dónde va el texto' })
+    ])),
+    el('button', { class: 'link', text: 'Prefiero hacerlo más adelante', onclick: vistaSinHerramienta })
+  );
+}
+
+function vistaSinHerramienta() {
+  pintar(
+    el('p', { class: 'paso', text: 'Para después' }),
+    el('h1', { text: 'Tu texto queda guardado' }),
+    el('p', { class: 'bajada', text: 'Lo encontrás en Ajustes, en Vos, listo para copiar. Cuando empieces a usar una herramienta, marcala en Ajustes, en Tus herramientas, y te muestro dónde va.' }),
+    el('p', { class: 'ayuda', text: 'Mientras tanto, lo que te enseñe va a estar explicado sin depender de ninguna.' }),
+    el('button', { class: 'primario', text: 'Empezar', onclick: () => finalizar('hecha') })
+  );
 }
 
 // ------------------------------------------------------------
@@ -2212,7 +2432,10 @@ function vistaPrueba() {
         // al día siguiente como si no hubiera pasado nada.
         await finalizar('hecha');
       }
-    })
+    }),
+    // La salida siempre a la vista: quien no puede probarlo ahora (sin
+    // la herramienta a mano, en el teléfono de otro) no queda trabado.
+    el('button', { class: 'link', text: 'No puedo probarlo ahora', onclick: () => finalizar('hecha') })
   );
 }
 
@@ -2547,7 +2770,8 @@ function elegirLeccion(lecciones, { hechas, apagados, nivel, intereses, subioUsa
 // ============================================================
 const NOMBRE_ARCO = {
   'mail-repetido': 'El mail que escribís siempre',
-  'informe-mensual': 'El informe de todos los meses'
+  'informe-mensual': 'El informe de todos los meses',
+  'reunion': 'La reunión que nadie resume'
 };
 
 const DIAS_DEL_ARCO = 10;

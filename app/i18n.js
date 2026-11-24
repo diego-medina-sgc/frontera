@@ -366,6 +366,7 @@ const EN = {
   // ---- Arcos ----
   'El mail que escribís siempre': "The email you always write",
   'El informe de todos los meses': "The monthly report",
+  'La reunión que nadie resume': "The meeting nobody writes up",
   'Lo dejaste armado': "You set it up for good",
 
   // ---- Bienvenida y nombre ----
@@ -384,7 +385,34 @@ const EN = {
   'Opcional. Es el nombre con el que te va a saludar la app. Lo cambiás cuando quieras en Ajustes.': "Optional. It's the name the app will greet you with. You can change it any time in Settings.",
   'Como te dicen': "What people call you",
   'No se pudo guardar tu nombre. Probá de nuevo.': "Your name couldn't be saved. Please try again.",
-  'El nombre con el que te saluda la app. Si lo dejás vacío, no te saluda con nombre.': "The name the app greets you with. Leave it empty and it won't greet you by name."
+  'El nombre con el que te saluda la app. Si lo dejás vacío, no te saluda con nombre.': "The name the app greets you with. Leave it empty and it won't greet you by name.",
+
+  // ---- Paso 1 sin herramienta ----
+  'Primero, elegí una': "First, pick one",
+  'Tus instrucciones tienen que estar adentro de una herramienta de IA para servir. Estas tres son gratis para empezar, en la web y en el teléfono, y alcanzan para todo lo que viene.': "Your instructions have to live inside an AI tool to be any use. These three are free to start with, on the web and on your phone, and they're enough for everything ahead.",
+  'Si no sabés cuál, elegí la que usa alguien cerca tuyo: vas a tener a quién preguntarle.': "If you don't know which, pick the one someone near you uses: you'll have someone to ask.",
+  'Te muestro dónde va el texto': "I'll show you where the text goes",
+  'Prefiero hacerlo más adelante': "I'd rather do it later",
+  'Para después': "For later",
+  'Tu texto queda guardado': "Your text is saved",
+  'Lo encontrás en Ajustes, en Vos, listo para copiar. Cuando empieces a usar una herramienta, marcala en Ajustes, en Tus herramientas, y te muestro dónde va.': "You'll find it in Settings, under You, ready to copy. When you start using a tool, tick it in Settings, under Your tools, and I'll show you where it goes.",
+  'Mientras tanto, lo que te enseñe va a estar explicado sin depender de ninguna.': "Meanwhile, what I teach you will be explained without depending on any of them.",
+  'Todavía no tengo la guía para la herramienta que marcaste. Buscá en su configuración algo como "instrucciones personalizadas" o "personalización" y pegalo ahí.': "I don't have the guide for the tool you ticked yet. Look in its settings for something like \"custom instructions\" or \"personalisation\" and paste it there.",
+  'No puedo probarlo ahora': "I can't try it now",
+
+  // ---- Ajustes: herramientas, ayuda, cuenta ----
+  'Tus herramientas': "Your tools",
+  'Las que usás hoy. Lo que te enseñe va a venir explicado para estas.': "The ones you use today. What I teach you will come explained for these.",
+  'Ayuda': "Help",
+  'Si algo no anda o tenés una duda, escribile a quien te sumó al círculo. Contale qué estabas haciendo y qué viste: con eso alcanza.': "If something isn't working or you have a question, write to whoever added you to the circle. Tell them what you were doing and what you saw: that's enough.",
+  'Borrar la cuenta': "Delete the account",
+  'Se borra todo: tus instrucciones, lo que leíste, tus retos y tus respuestas. No se puede deshacer, y para volver alguien del círculo te tiene que sumar de nuevo.': "Everything is deleted: your instructions, what you've read, your challenges and your answers. It can't be undone, and to come back someone in the circle has to add you again.",
+  'BORRAR': "DELETE",
+  'Borrar mi cuenta para siempre': "Delete my account for good",
+  'Borrando…': "Deleting…",
+  'No se pudo borrar. Probá de nuevo.': "It couldn't be deleted. Please try again.",
+  'Esta cuenta administra el círculo y no se puede borrar desde la app.': "This account runs the circle and can't be deleted from the app.",
+  'Falta la confirmación.': "Confirmation is missing."
 };
 
 // ------------------------------------------------------------
@@ -400,6 +428,9 @@ const PATRONES = [
     const v = { chico: 'small', normal: 'medium', grande: 'large', sistema: 'auto', claro: 'light', sepia: 'sepia', oscuro: 'dark' }[m[2]];
     return m[1] === 'Texto' ? `${v[0].toUpperCase()}${v.slice(1)} text` : `${v[0].toUpperCase()}${v.slice(1)} background`;
   }],
+
+  // borrar la cuenta: la palabra de confirmación ya viene traducida
+  [/^Escribí (\S+) para confirmar(\.?)$/, (m) => `Type ${m[1]} to confirm${m[2]}`],
 
   // saludo de Hoy, con el nombre que eligió la persona
   [/^Hola, (.+)$/s, (m) => `Hi, ${m[1]}`],
