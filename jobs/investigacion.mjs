@@ -119,7 +119,14 @@ fila(`volvieron la segunda semana: ${volvieron} de ${elegibles} con dos semanas 
 // ------------------------------------------------------------
 titulo('3. Lecciones contestadas');
 const slugDe = Object.fromEntries(lecciones.map(l => [l.id, l]));
-const contestadas = estados.filter(s => s.answered_at);
+// Lo contestado antes de terminar el onboarding no cuenta: la cuenta
+// todavía era nivel 0 por defecto y el Paso 1 marca la lección de
+// instrucciones como sabida. Mezclarlo daba un 75% de "ya lo sabía"
+// que era de prueba, no del ruteo.
+const terminoEl = Object.fromEntries(perfiles.map(p => [p.id, p.onboarded_at]));
+const respondidas = estados.filter(s => s.answered_at);
+const contestadas = respondidas.filter(s => terminoEl[s.profile_id] && s.answered_at > terminoEl[s.profile_id]);
+fila(`antes de terminar el onboarding: ${respondidas.length - contestadas.length} (no cuentan)`);
 const cuenta = (st) => contestadas.filter(s => s.status === st).length;
 fila(`contestadas: ${contestadas.length} · hechas ${cuenta('hecha')} · ya lo sabía ${cuenta('ya_la_sabia')} · saltadas ${cuenta('saltada')}`);
 fila(`comprensión media: ${prom(contestadas.filter(s => s.comprension).map(s => s.comprension))}`);
