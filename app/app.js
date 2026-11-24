@@ -1035,13 +1035,145 @@ function grupoCirculo() {
   return el('div', { class: 'grupo' }, [
     el('p', { class: 'etiqueta', text: 'Círculo' }),
     el('label', { for: 'mail-nuevo', text: 'Sumar a alguien' }),
-    el('p', { class: 'ayuda', text: 'Le creás la cuenta y le pasás vos el mail y la contraseña. No se manda ningún correo. Ojo: la app todavía no tiene pantalla para cambiar la contraseña, así que la que pongas le queda.' }),
+    el('p', { class: 'ayuda', text: 'Le creás la cuenta y le pasás vos el mail y la contraseña. No se manda ningún correo. Después puede cambiarla desde Ajustes, en "Contraseña".' }),
     mail,
     el('div', { style: 'height:12px' }),
     clave,
     el('div', { style: 'height:16px' }),
     alta,
     dicho
+  ]);
+}
+
+// ------------------------------------------------------------
+// Contraseña
+// ------------------------------------------------------------
+// Estando adentro no hace falta ningún mail: updateUser cambia la
+// contraseña de la sesión abierta. Recuperarla sin entrar sí
+// necesitaría mandar un correo, y la app no manda ninguno.
+const CLAVE_MIN = 8;
+
+function grupoClave() {
+  const nueva = el('input', {
+    type: 'password', id: 'clave-cambio', autocomplete: 'new-password', placeholder: `Al menos ${CLAVE_MIN} caracteres`
+  });
+  const repetir = el('input', {
+    type: 'password', id: 'clave-repetir', autocomplete: 'new-password', placeholder: 'Repetila'
+  });
+  const dicho = el('p', { class: 'ayuda', 'aria-live': 'polite' });
+
+  const guardar = async (ev) => {
+    ev.preventDefault();
+    if (nueva.value.length < CLAVE_MIN) {
+      dicho.textContent = tr(`La contraseña tiene que tener al menos ${CLAVE_MIN} caracteres.`);
+      return;
+    }
+    if (nueva.value !== repetir.value) {
+      dicho.textContent = tr('Las dos contraseñas no coinciden.');
+      return;
+    }
+
+    const boton = ev.submitter || ev.currentTarget.querySelector('button');
+    boton.disabled = true;
+    dicho.textContent = tr('Un segundo…');
+
+    const { error: e } = await db.auth.updateUser({ password: nueva.value });
+    boton.disabled = false;
+
+    if (e) {
+      // Los mensajes de Supabase vienen en inglés: se traducen los
+      // dos casos que de verdad se dan.
+      dicho.textContent = tr(/different from the old|same/i.test(e.message)
+        ? 'Esa es la misma contraseña que ya tenés. Elegí otra.'
+        : /weak|short|at least|characters/i.test(e.message)
+          ? `La contraseña tiene que tener al menos ${CLAVE_MIN} caracteres.`
+          : 'No se pudo cambiar la contraseña. Probá de nuevo en un momento.');
+      return;
+    }
+
+    nueva.value = '';
+    repetir.value = '';
+    dicho.textContent = tr('Listo. La próxima vez que entres, usá la nueva.');
+  };
+
+  return el('form', { class: 'grupo', onsubmit: guardar }, [
+    el('p', { class: 'etiqueta', text: 'Contraseña' }),
+    el('label', { for: 'clave-cambio', text: 'Nueva contraseña' }),
+    nueva,
+    el('div', { style: 'height:12px' }),
+    el('label', { for: 'clave-repetir', text: 'Repetila' }),
+    repetir,
+    el('div', { style: 'height:16px' }),
+    el('button', { class: 'primario', type: 'submit', text: 'Cambiar contraseña' }),
+    dicho
+  ]);
+}
+
+// ------------------------------------------------------------
+// Instalar
+// ------------------------------------------------------------
+// Sin instalarla, la app es una pestaña más del navegador y no hay
+// hábito. En iPhone nadie descubre "Agregar a inicio" solo, así que
+// se explica; en Android, si el navegador ofrece instalar, hay botón.
+let ofertaInstalar = null;
+addEventListener('beforeinstallprompt', (ev) => { ev.preventDefault(); ofertaInstalar = ev; });
+
+function yaInstalada() {
+  return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+
+function dispositivo() {
+  const ua = navigator.userAgent || '';
+  // iPadOS se hace pasar por Mac: se distingue por la pantalla táctil.
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  return 'otro';
+}
+
+function grupoInstalar() {
+  if (yaInstalada()) return null;
+
+  const pasos = {
+    ios: [
+      'Abrí esta página en Safari. En otros navegadores de iPhone no aparece la opción.',
+      'Tocá el botón de compartir, el cuadrado con la flecha hacia arriba.',
+      'Bajá en el menú y tocá "Agregar a inicio".',
+      'Tocá "Agregar". Frontera queda como una app más en tu pantalla de inicio.'
+    ],
+    android: [
+      'Abrí esta página en Chrome.',
+      'Tocá los tres puntos de arriba a la derecha.',
+      'Tocá "Instalar app" o "Agregar a la pantalla principal".',
+      'Confirmá. Frontera queda como una app más en tu pantalla principal.'
+    ],
+    otro: [
+      'En Chrome o Edge, buscá el ícono de instalar a la derecha de la barra de direcciones.',
+      'Tocalo y elegí "Instalar".',
+      'Frontera se abre en su propia ventana, como una app más.'
+    ]
+  }[dispositivo()];
+
+  const lista = el('ol', { class: 'pasos-instalar' }, pasos.map(p => el('li', { text: p })));
+
+  // Si el navegador ya ofrece instalar con un toque, se usa.
+  const boton = ofertaInstalar
+    ? el('button', {
+        class: 'primario',
+        text: 'Instalar ahora',
+        onclick: async () => {
+          ofertaInstalar.prompt();
+          await ofertaInstalar.userChoice.catch(() => {});
+          ofertaInstalar = null;
+          vistaPerfil();
+        }
+      })
+    : null;
+
+  return el('div', { class: 'grupo' }, [
+    el('p', { class: 'etiqueta', text: 'Instalar' }),
+    el('p', { class: 'ayuda', text: 'Instalada, Frontera abre sin la barra del navegador y queda a un toque, como cualquier otra app.' }),
+    boton,
+    lista
   ]);
 }
 
@@ -1096,6 +1228,10 @@ async function vistaPerfil() {
     ]),
 
     grupoVos(),
+
+    grupoInstalar(),
+
+    grupoClave(),
 
     grupoCirculo(),
 
