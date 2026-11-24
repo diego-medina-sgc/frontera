@@ -366,7 +366,25 @@ const EN = {
   // ---- Arcos ----
   'El mail que escribís siempre': "The email you always write",
   'El informe de todos los meses': "The monthly report",
-  'Lo dejaste armado': "You set it up for good"
+  'Lo dejaste armado': "You set it up for good",
+
+  // ---- Bienvenida y nombre ----
+  'Bienvenida': "Welcome",
+  'Hola. Esto es Frontera.': "Hello. This is Frontera.",
+  'Te ayuda a sacarle más a la IA que ya usás, a tu nivel y sobre tu trabajo real. Nunca te explica lo que ya sabés.': "It helps you get more out of the AI you already use, at your level and on your real work. It never explains what you already know.",
+  'Lo que va a pasar': "What happens next",
+  'Tus instrucciones · unos 5 minutos': "Your instructions · about 5 minutes",
+  'Ahora mismo. Te vas con un texto que mejora todas tus respuestas desde hoy.': "Right now. You leave with a text that improves every answer you get, starting today.",
+  'Una sola cosa por día': "One thing a day",
+  'Cinco minutos a tu nivel. Si ya lo sabés, la salteás y la app aprende.': "Five minutes at your level. If you already know it, skip it and the app learns.",
+  'Retos sobre tu trabajo': "Challenges on your own work",
+  'Con tu propio material, no ejercicios de manual.': "With your own material, not textbook exercises.",
+  'Nada se acumula: lo que no leíste no te queda pendiente.': "Nothing piles up: what you didn't read is never left owing.",
+  '¿Cómo te llamo?': "What should I call you?",
+  'Opcional. Es el nombre con el que te va a saludar la app. Lo cambiás cuando quieras en Ajustes.': "Optional. It's the name the app will greet you with. You can change it any time in Settings.",
+  'Como te dicen': "What people call you",
+  'No se pudo guardar tu nombre. Probá de nuevo.': "Your name couldn't be saved. Please try again.",
+  'El nombre con el que te saluda la app. Si lo dejás vacío, no te saluda con nombre.': "The name the app greets you with. Leave it empty and it won't greet you by name."
 };
 
 // ------------------------------------------------------------
@@ -382,6 +400,9 @@ const PATRONES = [
     const v = { chico: 'small', normal: 'medium', grande: 'large', sistema: 'auto', claro: 'light', sepia: 'sepia', oscuro: 'dark' }[m[2]];
     return m[1] === 'Texto' ? `${v[0].toUpperCase()}${v.slice(1)} text` : `${v[0].toUpperCase()}${v.slice(1)} background`;
   }],
+
+  // saludo de Hoy, con el nombre que eligió la persona
+  [/^Hola, (.+)$/s, (m) => `Hi, ${m[1]}`],
 
   // cabecera y semana
   [/^(\d+) (semana|semanas)$/, (m) => `${m[1]} ${pl(m[1], 'week', 'weeks')}`],

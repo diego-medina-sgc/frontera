@@ -775,7 +775,7 @@ async function arrancar() {
   // lección sin que la app sepa nada de ella.
   navegacion.hidden = !perfil.onboarded_at;
 
-  if (!perfil.onboarded_at) return vistaPaso1();
+  if (!perfil.onboarded_at) return vistaBienvenida();
 
   // El catálogo se pide ya, sin esperarlo: para cuando Hoy lo necesite,
   // el viaje está hecho o en camino.
@@ -821,6 +821,23 @@ async function dibujarRacha() {
 // Lo único que quedó del encabezado de arriba: la marca y la racha, en
 // la pantalla donde se las mira y no en la esquina a la que el pulgar
 // no llega.
+// El nombre con el que la persona pidió que la llamen. Hasta la
+// migración 057 el alta copiaba ahí la parte del mail antes de la
+// arroba, que nadie eligió: eso no cuenta como nombre.
+function nombreElegido() {
+  const n = (perfil?.display_name || '').trim();
+  if (!n) return '';
+  if (mail && n === mail.split('@')[0]) return '';
+  return n;
+}
+
+// El saludo de Hoy: una línea chica, sólo si hay nombre. Sin nombre no
+// se inventa un "Hola" vacío.
+function saludo() {
+  const n = nombreElegido();
+  return n ? el('p', { class: 'saludo', text: `Hola, ${n}` }) : null;
+}
+
 function cabecera() {
   return el('div', { class: 'cabecera' }, [
     el('span', { class: 'marca', text: 'Frontera' }),
@@ -893,6 +910,16 @@ function filaIdioma(idiomas) {
 // otra vida y sin forma de corregirlo. Editarlo acá recalcula los
 // intereses en el acto, así que lo que escribe cambia lo que recibe.
 function grupoVos() {
+  const nombre = el('input', {
+    type: 'text',
+    id: 'ajustes-nombre',
+    autocomplete: 'nickname',
+    autocapitalize: 'words',
+    maxlength: '40',
+    placeholder: 'Como te dicen'
+  });
+  nombre.value = nombreElegido();
+
   const contexto = el('textarea', {
     id: 'contexto',
     rows: '4',
@@ -928,6 +955,7 @@ function grupoVos() {
     text: 'Guardar',
     onclick: async (ev) => {
       const boton = ev.currentTarget;
+      const nuevoNombre = nombre.value.trim().slice(0, 40) || null;
       const nuevoContexto = contexto.value.trim() || null;
       const nuevoTexto = texto.value.trim() || null;
 
@@ -936,6 +964,7 @@ function grupoVos() {
 
       const intereses = await calcularIntereses([nuevoContexto]);
       const { error: e } = await db.from('profiles').update({
+        display_name: nuevoNombre,
         context_summary: nuevoContexto,
         personal_instructions: nuevoTexto,
         interest_topics: intereses
@@ -947,6 +976,7 @@ function grupoVos() {
         return;
       }
 
+      perfil.display_name = nuevoNombre;
       perfil.context_summary = nuevoContexto;
       perfil.personal_instructions = nuevoTexto;
       perfil.interest_topics = intereses;
@@ -956,6 +986,12 @@ function grupoVos() {
 
   return el('div', { class: 'grupo' }, [
     el('p', { class: 'etiqueta', text: 'Vos' }),
+
+    el('label', { for: 'ajustes-nombre', text: '¿Cómo te llamo?' }),
+    el('p', { class: 'ayuda', text: 'El nombre con el que te saluda la app. Si lo dejás vacío, no te saluda con nombre.' }),
+    nombre,
+
+    el('div', { style: 'height:18px' }),
 
     el('label', { for: 'contexto', text: 'Tu contexto' }),
     el('p', { class: 'ayuda', text: 'Es lo que usa la app para elegir de qué lado traerte las cosas y sobre qué armarte un reto. Si cambiaste de trabajo, cambialo acá.' }),
@@ -1649,6 +1685,70 @@ function generamosTexto() {
 
 function preguntasActivas() {
   return PREGUNTAS.filter(q => !q.soloSiGenera || generamosTexto());
+}
+
+// ============================================================
+// BIENVENIDA — antes del Paso 1
+// ============================================================
+// La portada promete cosas y, al entrar, nadie te recibía: la app
+// saltaba derecho a "Paso 1". Esta pantalla dice qué es, qué va a pasar
+// y cuánto lleva, y pregunta cómo llamarte. Un solo foco: Empezar.
+// Sólo la ve quien no terminó el onboarding.
+function vistaBienvenida() {
+  const nombre = el('input', {
+    type: 'text',
+    id: 'nombre',
+    autocomplete: 'nickname',
+    autocapitalize: 'words',
+    maxlength: '40',
+    enterkeyhint: 'go',
+    placeholder: 'Como te dicen'
+  });
+  nombre.value = nombreElegido();
+  const msj = el('div');
+  const boton = el('button', { class: 'primario', type: 'submit', text: 'Empezar' });
+
+  const empezar = async (ev) => {
+    ev.preventDefault();
+    const nuevo = nombre.value.trim().slice(0, 40) || null;
+    // Se escribe siempre, también vacío: así se borra el nombre que el
+    // alta vieja había copiado del mail.
+    if (nuevo !== (perfil.display_name || null)) {
+      boton.disabled = true;
+      const { error: e } = await db.from('profiles').update({ display_name: nuevo }).eq('id', perfil.id);
+      boton.disabled = false;
+      if (e) return msj.replaceChildren(error('No se pudo guardar tu nombre. Probá de nuevo.'));
+      perfil.display_name = nuevo;
+    }
+    vistaPaso1();
+  };
+
+  const paso = (n, titulo, texto) => el('li', {}, [
+    el('span', { class: 'pasos-num', text: n }),
+    el('div', {}, [el('strong', { text: titulo }), el('span', { text: texto })])
+  ]);
+
+  pintar(
+    el('p', { class: 'paso', text: 'Bienvenida' }),
+    el('h1', { text: 'Hola. Esto es Frontera.' }),
+    el('p', { class: 'bajada', text: 'Te ayuda a sacarle más a la IA que ya usás, a tu nivel y sobre tu trabajo real. Nunca te explica lo que ya sabés.' }),
+
+    el('p', { class: 'etiqueta', text: 'Lo que va a pasar' }),
+    el('ol', { class: 'pasos-portada' }, [
+      paso('1', 'Tus instrucciones · unos 5 minutos', 'Ahora mismo. Te vas con un texto que mejora todas tus respuestas desde hoy.'),
+      paso('2', 'Una sola cosa por día', 'Cinco minutos a tu nivel. Si ya lo sabés, la salteás y la app aprende.'),
+      paso('3', 'Retos sobre tu trabajo', 'Con tu propio material, no ejercicios de manual.')
+    ]),
+    el('p', { class: 'portada-promesa', text: 'Nada se acumula: lo que no leíste no te queda pendiente.' }),
+
+    el('form', { class: 'bienvenida-nombre', onsubmit: empezar }, [
+      el('label', { for: 'nombre', text: '¿Cómo te llamo?' }),
+      el('p', { class: 'ayuda', text: 'Opcional. Es el nombre con el que te va a saludar la app. Lo cambiás cuando quieras en Ajustes.' }),
+      nombre,
+      msj,
+      boton
+    ])
+  );
 }
 
 function vistaPaso1() {
@@ -2639,6 +2739,7 @@ async function vistaHoy() {
     // está la biblioteca: lo que no caduca, cuando la frontera está quieta.
     return pintar(
       cabecera(),
+      saludo(),
       semana,
       el('h1', { text: 'Por hoy está' }),
       el('p', { class: 'bajada', text: 'No hay nada nuevo que valga tus minutos. No quedó nada pendiente: lo que no apareció hoy, no te lo debés.' }),
@@ -2663,6 +2764,7 @@ async function vistaHoy() {
 
   pintar(
     cabecera(),
+    saludo(),
     semana,
     avisoAscenso,
     delArco ? marcaDeArco(delArco) : el('p', { class: 'paso', text: { radar: 'Salió esto', frontera: 'Frontera' }[prox.kind] || 'Hoy' }),

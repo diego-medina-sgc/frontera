@@ -177,16 +177,6 @@ button, a, [role="button"], .chip, .dia {
    ventana: cuatro pestañas separadas por 470 px, lejos de la columna
    de contenido. Ahora las pestañas viven en el mismo ancho que el
    texto, centradas, y la barra sigue de borde a borde. */
-/* Con mouse y pantalla ancha, el botón de ancho completo y las
-   respuestas estiradas a 680 px se ven de teléfono agrandado. El botón
-   principal toma el ancho de su texto y las respuestas, el de una fila
-   razonable. En el teléfono no cambia nada. */
-@media (min-width: 760px) and (hover: hover) and (pointer: fine) {
-  .primario { width: auto; min-width: 240px; padding-inline: 32px; }
-  .cierre-paso.apilado .pulgares { max-width: 520px; }
-  .cierre-paso.apilado .pulgares button { flex: 1; }
-}
-
 #nav button {
   flex: 1;
   min-width: 0;
@@ -383,6 +373,22 @@ strong { font-weight: 700; }
 }
 
 .ayuda { color: var(--texto-2); font-size: 14px; margin: -6px 0 18px; }
+
+/* El saludo de Hoy: una línea, en tinta suave, sólo si hay nombre. No
+   compite con el título: lo que importa hoy sigue siendo la lección. */
+.saludo {
+  margin: -10px 0 14px;
+  color: var(--texto-2);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+/* La bienvenida: el nombre cierra la pantalla, separado de lo que se lee. */
+.bienvenida-nombre {
+  padding-top: 26px;
+  border-top: 1px solid var(--borde);
+}
+.bienvenida-nombre .primario { margin-top: 20px; }
 
 /* Encabezado de Hoy: lo único que quedaba del header de arriba, en el
    lugar donde sí se mira. */
@@ -1642,4 +1648,17 @@ main.entra { animation: entrar .18s ease-out backwards; }
 @media (prefers-reduced-motion: reduce) {
   main.entra, .demo-respuesta.cambia, .hueso { animation: none; }
   .primario:active, .tarjeta:is(button):active, .portada-entrar:active { transform: none; }
+}
+
+/* Con mouse y pantalla ancha, el botón de ancho completo y las
+   respuestas estiradas a 680 px se ven de teléfono agrandado. El botón
+   principal toma el ancho de su texto y las respuestas, el de una fila
+   razonable. En el teléfono no cambia nada.
+   Va AL FINAL a propósito: tiene la misma especificidad que `.primario`
+   y `.pulgares`, y escrita antes la pisaban (pasó del 24/11 al 25/11
+   sin que se aplicara nunca). */
+@media (min-width: 760px) and (hover: hover) and (pointer: fine) {
+  .primario { width: auto; min-width: 240px; padding-inline: 32px; }
+  .cierre-paso.apilado .pulgares { max-width: 520px; }
+  .cierre-paso.apilado .pulgares button { flex: 1; }
 }
