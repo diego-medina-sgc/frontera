@@ -97,7 +97,9 @@ async function publicarReto(reto) {
   const api = async (ruta, opciones = {}) => {
     const r = await fetch(`${cred.SUPABASE_URL}/rest/v1/${ruta}`, { ...opciones, headers: { ...cab, ...opciones.headers } });
     if (!r.ok) throw new Error(`${ruta}: HTTP ${r.status} ${await r.text()}`);
-    return r.status === 204 ? null : r.json();
+    // 201 sin cuerpo con `return=minimal`: ver la nota en el `api` de abajo.
+    const texto = await r.text();
+    return texto ? JSON.parse(texto) : null;
   };
 
   try {
@@ -256,7 +258,12 @@ const cab = {
 const api = async (ruta, opciones = {}) => {
   const r = await fetch(`${cred.SUPABASE_URL}/rest/v1/${ruta}`, { ...opciones, headers: { ...cab, ...opciones.headers } });
   if (!r.ok) throw new Error(`${ruta}: HTTP ${r.status} ${await r.text()}`);
-  return r.status === 204 ? null : r.json();
+  // Con `return=minimal` la base contesta 201 sin cuerpo. Leerlo como
+  // JSON tiraba "Unexpected end of JSON input" DESPUÉS de haber
+  // guardado: la primera lección entraba y el resto se cortaba (pasó
+  // el 25/11, en la primera mañana del radar automático).
+  const texto = await r.text();
+  return texto ? JSON.parse(texto) : null;
 };
 
 try {
@@ -267,7 +274,11 @@ try {
     if (!topics.length) throw new Error(`el nodo ${l.nodo} no existe en la base`);
     const topic_id = topics[0].id;
 
-    const [leccion] = await api('lessons', {
+    // Tiene que poder correr dos veces sin romper nada: si la tarea se
+    // corta a la mitad y se vuelve a correr, las lecciones que ya entraron
+    // se actualizan (on_conflict=slug) en vez de frenar todo con un 409,
+    // y los contenidos que ya están no se vuelven a insertar.
+    const [leccion] = await api('lessons?on_conflict=slug', {
       method: 'POST',
       headers: { 'Prefer': 'return=representation,resolution=merge-duplicates' },
       body: JSON.stringify({
@@ -288,11 +299,17 @@ try {
       minutes: l.minutos || 7, generated_by: 'radar'
     });
 
-    await api('lesson_contents', {
-      method: 'POST',
-      headers: { 'Prefer': 'return=minimal,resolution=ignore-duplicates' },
-      body: JSON.stringify(contenidos)
-    });
+    const yaEstan = new Set((await api(
+      `lesson_contents?lesson_id=eq.${leccion.id}&tool_id=is.null&select=lang`
+    )).map(c => c.lang));
+    const faltan = contenidos.filter(c => !yaEstan.has(c.lang));
+    if (faltan.length) {
+      await api('lesson_contents', {
+        method: 'POST',
+        headers: { 'Prefer': 'return=minimal' },
+        body: JSON.stringify(faltan)
+      });
+    }
 
     await api('signals?on_conflict=url_hash', {
       method: 'POST',
