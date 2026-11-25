@@ -222,12 +222,19 @@ const sql = [
 // Escritura directa, si hay credenciales
 // ------------------------------------------------------------
 function credenciales() {
+  // En la notebook salen de jobs/.env; en la nube (la rutina del radar),
+  // de variables de entorno del entorno de Claude Code. Nunca del repo.
   const ruta = join(AQUI, '.env');
-  if (!existsSync(ruta)) return null;
-  const env = {};
-  for (const linea of readFileSync(ruta, 'utf8').split('\n')) {
-    const m = linea.match(/^\s*([A-Z_]+)\s*=\s*(.+?)\s*$/);
-    if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  const env = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
+    PROFILE_ID: process.env.PROFILE_ID
+  };
+  if (existsSync(ruta)) {
+    for (const linea of readFileSync(ruta, 'utf8').split('\n')) {
+      const m = linea.match(/^\s*([A-Z_]+)\s*=\s*(.+?)\s*$/);
+      if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
   }
   // Un reto es de una persona. Por defecto es la del .env (Diego); para
   // alguien del círculo: --perfil <uuid>, que sale de retos-circulo.mjs.
