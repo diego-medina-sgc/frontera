@@ -1022,6 +1022,14 @@ body:has(#version-nueva:not([hidden])) .volviste {
 }
 .glosa-caja strong { color: var(--texto); }
 
+/* Radar: la cola de borradores en Ajustes. */
+.radar-cola { display: grid; gap: 10px; }
+.radar-borrador h3 { margin: 2px 0 6px; font-size: 17px; line-height: 1.3; }
+.radar-borrador .paso { margin-bottom: 4px; }
+.radar-fuente { display: inline-block; font-size: 14px; color: var(--marca); margin-bottom: 8px; overflow-wrap: anywhere; }
+.radar-acciones { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.radar-acciones .chip { min-height: 40px; }
+
 /* Ayuda: un párrafo, sin botón. No hay a dónde mandar mails desde acá. */
 .ayuda-texto { color: var(--texto-2); font-size: 15px; margin: 0; }
 

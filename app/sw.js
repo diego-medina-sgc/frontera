@@ -14,7 +14,7 @@
 //
 // Al cambiar algo acá, subir el número de CACHE.
 
-const CACHE = 'frontera-v17';
+const CACHE = 'frontera-v18';
 
 // Solo lo indispensable para que algo se vea sin conexión. El código no
 // entra: que lo traiga la red siempre.

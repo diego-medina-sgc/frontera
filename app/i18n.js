@@ -414,6 +414,20 @@ const EN = {
   'Esta cuenta administra el círculo y no se puede borrar desde la app.': "This account runs the circle and can't be deleted from the app.",
   'Falta la confirmación.': "Confirmation is missing.",
 
+  // ---- Ajustes: radar ----
+  'Radar': "Radar",
+  'Lo que el radar escribió solo. No lo ve nadie hasta que lo publicás.': "What the radar wrote on its own. Nobody sees it until you publish it.",
+  'Buscando borradores…': "Looking for drafts…",
+  'No hay nada esperando.': "Nothing waiting.",
+  'No se pudo hacer. Probá de nuevo.': "That didn't work. Please try again.",
+  '¿Descartar este borrador? Se borra.': "Discard this draft? It will be deleted.",
+  'Borrador del radar': "Radar draft",
+  'Ver la fuente': "See the source",
+  'Publicar': "Publish",
+  'Descartar': "Discard",
+  'Tu cuenta no aprueba contenido.': "Your account doesn't approve content.",
+  'Ese borrador ya no está.': "That draft is no longer there.",
+
   // ---- Ajustes: avisos ----
   'Avisos': "Notifications",
   'Uno por día hábil, a eso de las 9, sólo si ese día todavía no entraste. Sin números ni rachas, y nada se acumula.': "One per weekday, around 9am, only if you haven't been in yet that day. No numbers or streaks, and nothing piles up.",

@@ -108,6 +108,11 @@ Escribí `jobs/salida/lecciones-YYYY-MM-DD.json`:
       "hook": "Una oración que diga por qué esto es tuyo.",
       "cuerpo": "markdown con ## subtítulos y **negritas**",
       "minutos": 7,
+      "en": {
+        "titulo": "The same lesson in British English",
+        "hook": "One sentence on why this is yours.",
+        "cuerpo": "the same markdown, translated, same structure"
+      },
       "senal": {
         "url": "https://...",
         "titulo": "Título original del anuncio",
@@ -119,11 +124,20 @@ Escribí `jobs/salida/lecciones-YYYY-MM-DD.json`:
 }
 ```
 
-Después:
+**Toda lección va en español y en inglés británico.** La versión en
+inglés va en `en`, con la misma estructura y los mismos datos.
+
+Después, **siempre como borrador**:
 
 ```
-node jobs/publicar.mjs
+node jobs/publicar.mjs --borrador
 ```
+
+Desde el 24/11 el radar no publica directo: deja borradores que Diego
+aprueba en la app (Ajustes → Radar). Así se sostiene la regla de no
+publicar nada que nadie haya mirado, aunque la lección la haya escrito
+una tarea programada sin nadie delante. Sin `--borrador`, publica
+directo: sólo para cuando Diego lo pida en una sesión.
 
 Con credenciales en `jobs/.env` escribe directo en la base. Sin
 credenciales deja el SQL en `jobs/salida/` para pegar en el editor de

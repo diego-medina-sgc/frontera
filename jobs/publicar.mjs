@@ -9,6 +9,13 @@
 // Uso:
 //   node jobs/publicar.mjs                       -> toma el del día
 //   node jobs/publicar.mjs ruta/al/archivo.json
+//   node jobs/publicar.mjs --borrador            -> sin publicar: va a la
+//        cola de aprobación (Ajustes → Radar en la app). Es el modo que
+//        usa la tarea programada que escribe el radar sola cada mañana.
+//
+// Cada lección trae su versión en inglés en `en: { titulo, hook, cuerpo }`.
+// En modo borrador es obligatoria: toda lección nueva va en los dos
+// idiomas, y nadie la va a traducir después.
 // ============================================================
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -28,7 +35,9 @@ const NODOS_VALIDOS = new Set([
   'contexto-largo'
 ]);
 
-const entrada = process.argv[2] || join(AQUI, 'salida', `lecciones-${HOY}.json`);
+const BORRADOR = process.argv.includes('--borrador');
+const argArchivo = process.argv.slice(2).find(a => a.endsWith('.json'));
+const entrada = argArchivo || join(AQUI, 'salida', `lecciones-${HOY}.json`);
 
 if (!existsSync(entrada)) {
   console.log(`No encontré ${entrada}`);
@@ -138,7 +147,20 @@ for (const [i, l] of lecciones.entries()) {
   if (l.cuerpo?.includes('$md$')) problemas.push(`${d}: el cuerpo contiene $md$ y rompe el SQL`);
   if (!l.senal?.url) problemas.push(`${d}: falta la señal de la que nació`);
   if (l.cuerpo && l.cuerpo.length < 600) problemas.push(`${d}: el cuerpo es sospechosamente corto`);
+  if (BORRADOR && (!l.en?.titulo || !l.en?.cuerpo)) problemas.push(`${d}: falta la versión en inglés (en.titulo y en.cuerpo)`);
+  if (l.en?.cuerpo?.includes('$md$')) problemas.push(`${d}: el cuerpo en inglés contiene $md$`);
+  if (l.en?.cuerpo && l.en.cuerpo.length < 600) problemas.push(`${d}: el cuerpo en inglés es sospechosamente corto`);
+  // Lo mismo que vigila revisar.mjs: lo que el lector de la app muestra
+  // en crudo. Mejor frenarlo acá que verlo en el teléfono.
+  for (const [cual, texto] of [['es', l.cuerpo], ['en', l.en?.cuerpo]]) {
+    if (!texto) continue;
+    if (/```/.test(texto)) problemas.push(`${d} (${cual}): bloque de código`);
+    if (/^\s*\|/m.test(texto)) problemas.push(`${d} (${cual}): tabla`);
+    if (/\]\(https?:/.test(texto)) problemas.push(`${d} (${cual}): link en markdown`);
+    if (/^\s*>/m.test(texto)) problemas.push(`${d} (${cual}): cita`);
+  }
 }
+if (lecciones.length > 3) problemas.push(`son ${lecciones.length} lecciones: el radar nunca publica más de tres por día`);
 
 if (problemas.length) {
   console.log('No publiqué nada. Problemas:\n');
@@ -155,8 +177,8 @@ function sqlDe(l) {
   const hash = createHash('md5').update(l.senal.url).digest('hex');
   return `
 -- ${l.titulo}
-insert into lessons (slug, topic_id, kind, level_floor, level_ceiling, published)
-select '${esc(l.slug)}', t.id, 'radar', ${l.nivel[0]}, ${l.nivel[1]}, true
+insert into lessons (slug, topic_id, kind, level_floor, level_ceiling, published, fuente_url)
+select '${esc(l.slug)}', t.id, 'radar', ${l.nivel[0]}, ${l.nivel[1]}, ${BORRADOR ? 'false' : 'true'}, '${esc(l.senal.url)}'
 from topics t where t.slug = '${esc(l.nodo)}'
 on conflict (slug) do nothing;
 
@@ -168,7 +190,16 @@ $md$${l.cuerpo}$md$,
   ${l.minutos || 7}, 'radar'
 from lessons l where l.slug = '${esc(l.slug)}'
 on conflict do nothing;
-
+${l.en ? `
+insert into lesson_contents (lesson_id, lang, tool_id, title, hook, body_md, minutes, generated_by)
+select l.id, 'en', null,
+  '${esc(l.en.titulo)}',
+  ${l.en.hook ? `'${esc(l.en.hook)}'` : 'null'},
+$md$${l.en.cuerpo}$md$,
+  ${l.minutos || 7}, 'radar'
+from lessons l where l.slug = '${esc(l.slug)}'
+on conflict do nothing;
+` : ''}
 insert into signals (url, url_hash, title, summary, published_at, status, topic_id)
 select '${esc(l.senal.url)}', '${hash}', '${esc(l.senal.titulo || l.titulo)}',
   ${l.senal.resumen ? `'${esc(l.senal.resumen)}'` : 'null'},
@@ -241,18 +272,26 @@ try {
       headers: { 'Prefer': 'return=representation,resolution=merge-duplicates' },
       body: JSON.stringify({
         slug: l.slug, topic_id, kind: 'radar',
-        level_floor: l.nivel[0], level_ceiling: l.nivel[1], published: true
+        level_floor: l.nivel[0], level_ceiling: l.nivel[1],
+        published: !BORRADOR, fuente_url: l.senal.url
       })
+    });
+
+    const contenidos = [{
+      lesson_id: leccion.id, lang: l.lang || 'es', tool_id: null,
+      title: l.titulo, hook: l.hook || null, body_md: l.cuerpo,
+      minutes: l.minutos || 7, generated_by: 'radar'
+    }];
+    if (l.en) contenidos.push({
+      lesson_id: leccion.id, lang: 'en', tool_id: null,
+      title: l.en.titulo, hook: l.en.hook || null, body_md: l.en.cuerpo,
+      minutes: l.minutos || 7, generated_by: 'radar'
     });
 
     await api('lesson_contents', {
       method: 'POST',
       headers: { 'Prefer': 'return=minimal,resolution=ignore-duplicates' },
-      body: JSON.stringify({
-        lesson_id: leccion.id, lang: l.lang || 'es', tool_id: null,
-        title: l.titulo, hook: l.hook || null, body_md: l.cuerpo,
-        minutes: l.minutos || 7, generated_by: 'radar'
-      })
+      body: JSON.stringify(contenidos)
     });
 
     await api('signals?on_conflict=url_hash', {
@@ -272,7 +311,9 @@ try {
     console.log(`  · ${l.titulo}`);
   }
 
-  console.log(`\nPublicadas ${publicadas}.`);
+  console.log(BORRADOR
+    ? `\nGuardadas ${publicadas} como borrador. Se aprueban en la app: Ajustes → Radar.`
+    : `\nPublicadas ${publicadas}.`);
 } catch (e) {
   const salida = join(AQUI, 'salida', `lecciones-${HOY}.sql`);
   writeFileSync(salida, sql, 'utf8');

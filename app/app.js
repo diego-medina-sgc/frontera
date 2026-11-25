@@ -1025,6 +1025,92 @@ function grupoHerramientas() {
 }
 
 // ------------------------------------------------------------
+// Radar: lo que se escribió solo, esperando que alguien lo apruebe
+// ------------------------------------------------------------
+// Cada mañana una tarea programada corre el skill del radar y deja las
+// lecciones como borrador. Acá se leen y se publican o se descartan.
+// Sólo para quien administra el círculo; la edge function `radar-cola`
+// lo vuelve a verificar con la secret key, así que mostrar el grupo es
+// cosmético. Sin borradores, el grupo lo dice en una línea y nada más:
+// no hay contador ni aviso rojo.
+function grupoRadar() {
+  if (!perfil.puede_invitar) return null;
+
+  const lista = el('div', { class: 'radar-cola' }, [el('p', { class: 'ayuda', text: 'Buscando borradores…' })]);
+  const grupo = el('div', { class: 'grupo' }, [
+    el('p', { class: 'etiqueta', text: 'Radar' }),
+    el('p', { class: 'ayuda', text: 'Lo que el radar escribió solo. No lo ve nadie hasta que lo publicás.' }),
+    lista
+  ]);
+
+  const pedir = async (cuerpo) => {
+    const { data, error: e } = await db.functions.invoke('radar-cola', { body: cuerpo });
+    if (e || !data?.ok) {
+      let texto = 'No se pudo hacer. Probá de nuevo.';
+      try { texto = (await e?.context?.json())?.error || data?.error || texto; } catch { /* queda el genérico */ }
+      throw new Error(texto);
+    }
+    return data;
+  };
+
+  const pintarLista = async () => {
+    let borradores;
+    try {
+      ({ borradores } = await pedir({ accion: 'listar' }));
+    } catch (err) {
+      lista.replaceChildren(el('p', { class: 'ayuda', text: err.message }));
+      return;
+    }
+    if (!borradores.length) {
+      lista.replaceChildren(el('p', { class: 'ayuda', text: 'No hay nada esperando.' }));
+      return;
+    }
+
+    lista.replaceChildren(...borradores.map((b) => {
+      const dicho = el('p', { class: 'ayuda' });
+      const accion = (cual) => async (ev) => {
+        const boton = ev.currentTarget;
+        if (cual === 'descartar' && !confirm(tr('¿Descartar este borrador? Se borra.'))) return;
+        boton.disabled = true;
+        try {
+          await pedir({ accion: cual, slug: b.slug });
+          await pintarLista();
+        } catch (err) {
+          boton.disabled = false;
+          dicho.textContent = err.message;
+        }
+      };
+
+      const leer = () => lector({
+        epigrafe: tr('Borrador del radar'),
+        titulo: b.es?.title || b.slug,
+        bajada: b.es?.hook || null,
+        cuerpoMd: b.es?.body_md || '',
+        minutos: b.es?.minutes,
+        clave: 'borrador-' + b.slug,
+        volver: vistaPerfil
+      });
+
+      return el('div', { class: 'tarjeta radar-borrador' }, [
+        el('p', { class: 'paso', text: [b.tema, `nivel ${b.nivel[0]}-${b.nivel[1]}`, b.tieneIngles ? 'es + en' : 'sólo es'].filter(Boolean).join(' · ') }),
+        el('h3', { text: b.es?.title || b.slug }),
+        b.es?.hook ? el('p', { class: 'ayuda', text: b.es.hook }) : null,
+        b.fuente ? el('a', { class: 'radar-fuente', href: b.fuente, target: '_blank', rel: 'noopener', text: 'Ver la fuente' }) : null,
+        el('div', { class: 'radar-acciones' }, [
+          el('button', { class: 'link', text: 'Leer', onclick: leer }),
+          el('button', { class: 'chip', text: 'Publicar', onclick: accion('publicar') }),
+          el('button', { class: 'link', text: 'Descartar', onclick: accion('descartar') })
+        ]),
+        dicho
+      ]);
+    }));
+  };
+
+  pintarLista();
+  return grupo;
+}
+
+// ------------------------------------------------------------
 // Avisos: uno por día hábil, a la mañana, si ese día no entraste
 // ------------------------------------------------------------
 // Opcionales y apagados de entrada. Las reglas (lunes a viernes, uno
@@ -1546,6 +1632,8 @@ async function vistaPerfil() {
     grupoClave(),
 
     grupoCirculo(),
+
+    grupoRadar(),
 
     el('div', { class: 'grupo' }, [
       el('p', { class: 'etiqueta', text: 'Ayuda' }),
